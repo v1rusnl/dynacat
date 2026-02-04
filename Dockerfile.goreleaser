@@ -1,0 +1,7 @@
+FROM alpine:3.21
+
+WORKDIR /app
+COPY dynacat .
+
+EXPOSE 8080/tcp
+ENTRYPOINT ["/app/dynacat", "--config", "/app/config/dynacat.yml"]
