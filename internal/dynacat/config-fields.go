@@ -129,6 +129,44 @@ func (d *durationField) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
+var updateIntervalFieldPattern = regexp.MustCompile(`^(\d+)(s|h)$`)
+
+type updateIntervalField time.Duration
+
+func (d *updateIntervalField) UnmarshalYAML(node *yaml.Node) error {
+	var value string
+
+	if err := node.Decode(&value); err != nil {
+		return err
+	}
+
+	matches := updateIntervalFieldPattern.FindStringSubmatch(value)
+
+	if len(matches) != 3 {
+		return fmt.Errorf("invalid update-interval format: %s (supported units: s, h)", value)
+	}
+
+	duration, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return err
+	}
+
+	switch matches[2] {
+	case "s":
+		*d = updateIntervalField(time.Duration(duration) * time.Second)
+	case "h":
+		*d = updateIntervalField(time.Duration(duration) * time.Hour)
+	default:
+		return fmt.Errorf("invalid update-interval unit: %s (supported units: s, h)", matches[2])
+	}
+
+	return nil
+}
+
+func (d *updateIntervalField) Milliseconds() int64 {
+	return time.Duration(*d).Milliseconds()
+}
+
 type customIconField struct {
 	URL        template.URL
 	AutoInvert bool

@@ -8,6 +8,7 @@ FROM alpine:3.21
 
 WORKDIR /app
 COPY --from=builder /app/dynacat .
+COPY docs/dynacat.yml /app/config/dynacat.yml
 
 EXPOSE 8080/tcp
 ENTRYPOINT ["/app/dynacat", "--config", "/app/config/dynacat.yml"]

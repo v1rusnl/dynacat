@@ -214,7 +214,7 @@ func newApplication(c *config) (*application, error) {
 	}
 
 	if config.Branding.AppIconURL == "" {
-		config.Branding.AppIconURL = app.StaticAssetPath("app-icon.png")
+		config.Branding.AppIconURL = app.StaticAssetPath("app-icon.svg")
 	}
 
 	if config.Branding.AppBackgroundColor == "" {
@@ -267,6 +267,58 @@ func (p *page) updateOutdatedWidgets() {
 	}
 
 	wg.Wait()
+}
+
+func (p *page) GetMinUpdateInterval() int64 {
+	min, found := getMinUpdateIntervalForWidgets(p.HeadWidgets)
+
+	for c := range p.Columns {
+		m, f := getMinUpdateIntervalForWidgets(p.Columns[c].Widgets)
+		if f {
+			if !found || m < min {
+				min = m
+				found = true
+			}
+		}
+	}
+
+	if !found {
+		return 0
+	}
+
+	return min.Milliseconds()
+}
+
+func getMinUpdateIntervalForWidgets(ws widgets) (time.Duration, bool) {
+	min := 1 * time.Second
+	found := false
+
+	for _, w := range ws {
+		var interval time.Duration
+		widgetFound := false
+
+		if cw, ok := w.(*customAPIWidget); ok {
+			// Only include custom-api widgets in global polling if they don't have update-interval set
+			// Widgets with update-interval will poll independently on the client side
+			if cw.UpdateInterval == nil {
+				widgetFound = true
+				interval = 1 * time.Second
+			}
+		} else if group, ok := w.(*groupWidget); ok {
+			interval, widgetFound = getMinUpdateIntervalForWidgets(group.Widgets)
+		} else if sc, ok := w.(*splitColumnWidget); ok {
+			interval, widgetFound = getMinUpdateIntervalForWidgets(sc.Widgets)
+		}
+
+		if widgetFound {
+			if !found || interval < min {
+				min = interval
+			}
+			found = true
+		}
+	}
+
+	return min, found
 }
 
 func (a *application) resolveUserDefinedAssetPath(path string) string {

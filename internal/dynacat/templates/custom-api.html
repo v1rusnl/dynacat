@@ -1,5 +1,7 @@
 {{ template "widget-base.html" . }}
 
+{{ define "widget-data-attrs" }}{{ if .UpdateInterval }} data-update-interval="{{ .UpdateInterval.Milliseconds }}"{{ end }}{{ end }}
+
 {{ define "widget-content-classes" }}{{ if .Frameless }}widget-content-frameless{{ end }}{{ end }}
 
 {{ define "widget-content" }}

@@ -44,12 +44,13 @@ type customAPIWidget struct {
 	Options           customAPIOptions             `yaml:"options"`
 	Template          string                       `yaml:"template"`
 	Frameless         bool                         `yaml:"frameless"`
+	UpdateInterval    *updateIntervalField         `yaml:"update-interval"`
 	compiledTemplate  *template.Template           `yaml:"-"`
 	CompiledHTML      template.HTML                `yaml:"-"`
 }
 
 func (widget *customAPIWidget) initialize() error {
-	widget.withTitle("Custom API").withCacheDuration(1 * time.Hour)
+	widget.withTitle("Custom API").withCacheDuration(1 * time.Minute)
 
 	if err := widget.CustomAPIRequest.initialize(); err != nil {
 		return fmt.Errorf("initializing primary request: %v", err)
@@ -71,6 +72,13 @@ func (widget *customAPIWidget) initialize() error {
 	}
 
 	widget.compiledTemplate = compiledTemplate
+
+	// Validate update-interval if provided
+	if widget.UpdateInterval != nil {
+		if *widget.UpdateInterval <= 0 {
+			return errors.New("update-interval must be greater than 0")
+		}
+	}
 
 	return nil
 }

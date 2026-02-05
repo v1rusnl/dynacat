@@ -142,7 +142,7 @@ pages:
           - type: releases
             cache: 1d
             repositories:
-              - dynacatapp/dynacat
+              - Panonim/dynacat
               - go-gitea/gitea
               - immich-app/immich
               - syncthing/syncthing
@@ -204,7 +204,7 @@ Create a `docker-compose.yml` file with the following contents:
 services:
   dynacat:
     container_name: dynacat
-    image: dynacatapp/dynacat
+    image: Panonim/dynacat
     restart: unless-stopped
     volumes:
       - ./config:/app/config
@@ -215,7 +215,7 @@ services:
 Then, create a new directory called `config` and download the example starting [`dynacat.yml`](https://github.com/Panonim/dynacat/blob/main/docs/dynacat.yml) file into it by running:
 
 ```bash
-mkdir config && wget -O config/dynacat.yml https://raw.githubusercontent.com/dynacatapp/dynacat/refs/heads/main/docs/dynacat.yml
+mkdir config && wget -O config/dynacat.yml https://raw.githubusercontent.com/Panonim/dynacat/refs/heads/main/docs/dynacat.yml
 ```
 
 Feel free to edit the `dynacat.yml` file to your liking, and when ready run:
@@ -250,12 +250,12 @@ Visit the [latest release page](https://github.com/Panonim/dynacat/releases/late
 To grab a starting template for the config file, run:
 
 ```bash
-wget https://raw.githubusercontent.com/dynacatapp/dynacat/refs/heads/main/docs/dynacat.yml
+wget https://raw.githubusercontent.com/Panonim/dynacat/refs/heads/main/docs/dynacat.yml
 ```
 
 ### Windows
 
-Download and extract the executable from the [latest release](https://github.com/Panonim/dynacat/releases/latest) (most likely the file called `dynacat-windows-amd64.zip` if you're on a 64-bit system) and place it in a folder of your choice. Then, create a new text file called `dynacat.yml` in the same folder and paste the content from [here](https://raw.githubusercontent.com/dynacatapp/dynacat/refs/heads/main/docs/dynacat.yml) in it. You should then be able to run the executable and access the dashboard by visiting `http://localhost:8080` in your browser.
+Download and extract the executable from the [latest release](https://github.com/Panonim/dynacat/releases/latest) (most likely the file called `dynacat-windows-amd64.zip` if you're on a 64-bit system) and place it in a folder of your choice. Then, create a new text file called `dynacat.yml` in the same folder and paste the content from [here](https://raw.githubusercontent.com/Panonim/dynacat/refs/heads/main/docs/dynacat.yml) in it. You should then be able to run the executable and access the dashboard by visiting `http://localhost:8080` in your browser.
 
 
 
@@ -441,6 +441,4 @@ docker push owner/dynacat:latest
 
 <br>
 
-## Thank you
-
-To all the people who were generous enough to [sponsor](https://github.com/sponsors/dynacatapp) the project and to everyone who has contributed in any way, be it PRs, submitting issues, helping others in the discussions or Discord server, creating guides and tools or just mentioning Dynacat on social media. Your support is greatly appreciated and helps keep the project going.
+> This is a fork of a ['Glance'](https://github.com/glanceapp/glance) dashboard. 

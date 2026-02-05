@@ -113,7 +113,7 @@ Alternatively, you can load the contents of a file who's path is provided by an 
 ```yaml
 services:
   dynacat:
-    image: dynacatapp/dynacat
+    image: Panonim/dynacat
     environment:
       - TOKEN_FILE=/home/user/token
     volumes:
@@ -181,7 +181,7 @@ dynacat --config /path/to/dynacat.yml config:print | less -N
 This is a bit more convoluted when running Dynacat inside a Docker container:
 
 ```sh
-docker run --rm -v ./dynacat.yml:/app/config/dynacat.yml dynacatapp/dynacat config:print | less -N
+docker run --rm -v ./dynacat.yml:/app/config/dynacat.yml Panonim/dynacat config:print | less -N
 ```
 
 This assumes that the config you want to print is in your current working directory and is named `dynacat.yml`.
@@ -237,7 +237,7 @@ To generate a secret key, run the following command:
 Or with Docker:
 
 ```sh
-docker run --rm dynacatapp/dynacat secret:make
+docker run --rm Panonim/dynacat secret:make
 ```
 
 ### Using hashed passwords
@@ -251,7 +251,7 @@ If you do not want to store plain passwords in your config file or in environmen
 Or with Docker:
 
 ```sh
-docker run --rm dynacatapp/dynacat password:hash mysecretpassword
+docker run --rm Panonim/dynacat password:hash mysecretpassword
 ```
 
 Then, in your config file use the `password-hash` property instead of `password`:
@@ -366,7 +366,7 @@ branding:
   logo-url: /assets/logo.png
   favicon-url: /assets/logo.png
   app-name: "My Dashboard"
-  app-icon-url: "/assets/app-icon.png"
+  app-icon-url: "/assets/app-icon.svg"
   app-background-color: "#151519"
 ```
 
@@ -726,13 +726,14 @@ When set to `true`, the header (title) of the widget will be hidden. You cannot 
 > If a widget fails to update, a red dot or circle is shown next to the title of that widget indicating that the it is not working. You will not be able to see this if you hide the header.
 
 #### `cache`
-How long to keep the fetched data in memory. The value is a string and must be a number followed by one of s, m, h, d. Examples:
+How long to keep the fetched data in memory. The value is a string and must be a number followed by one of ms, s, m, h, d. Examples:
 
 ```yaml
-cache: 30s # 30 seconds
-cache: 5m  # 5 minutes
-cache: 2h  # 2 hours
-cache: 1d  # 1 day
+cache: 500ms # 500 milliseconds
+cache: 30s   # 30 seconds
+cache: 5m    # 5 minutes
+cache: 2h    # 2 hours
+cache: 1d    # 1 day
 ```
 
 > [!NOTE]
@@ -1565,6 +1566,7 @@ Examples:
 | frameless | boolean | no | false |
 | allow-insecure | boolean | no | false |
 | skip-json-validation | boolean | no | false |
+| update-interval | string | no | |
 | template | string | yes | |
 | options | map | no | |
 | parameters | key (string) & value (string|array) | no | |
@@ -1572,6 +1574,26 @@ Examples:
 
 ##### `url`
 The URL to fetch the data from. It must be accessible from the server that Dynacat is running on.
+
+##### `update-interval`
+Controls how often the browser fetches new data from the server for this widget. This is a client-side refresh interval that determines how frequently the widget updates in the browser. The value must be specified as a number followed by a time unit: `s` (seconds) or `h` (hours). For example: `5s`, `30s`, `1h`, `2h`. 
+
+If not specified, the widget will only update when the page's global update interval triggers (if configured). Setting this allows individual custom-api widgets to refresh more frequently than the page's default update interval.
+
+**Note:** This only affects how often the browser requests updated content. The server-side caching behavior is controlled separately by the `cache` property.
+
+**Important:** Only use time units `s` (seconds) or `h` (hours). Using other units like `m` (minutes), `d` (days), or omitting the unit will result in a configuration error.
+
+Example:
+```yaml
+- type: custom-api
+  title: Live Stock Price
+  update-interval: 5s  # Updates every 5 seconds
+  cache: 5s
+  url: https://api.example.com/stock/AAPL
+  template: |
+    <div class="size-h3">${{ .JSON.String "price" }}</div>
+```
 
 ##### `headers`
 Optionally specify the headers that will be sent with the request. Example:
@@ -2031,7 +2053,7 @@ Example:
   repositories:
     - go-gitea/gitea
     - jellyfin/jellyfin
-    - dynacatapp/dynacat
+    - Panonim/dynacat
     - codeberg:redict/redict
     - gitlab:fdroid/fdroidclient
     - dockerhub:gotify/server
@@ -2058,7 +2080,7 @@ A list of repositores to fetch the latest release for. Only the name/repo is req
 ```yaml
 repositories:
   - gitlab:inkscape/inkscape
-  - dockerhub:dynacatapp/dynacat
+  - dockerhub:Panonim/dynacat
   - codeberg:redict/redict
 ```
 
@@ -2086,7 +2108,7 @@ To include prereleases you can specify the repository as an object and use the `
 ```yaml
 repositories:
   - gitlab:inkscape/inkscape
-  - repository: dynacatapp/dynacat
+  - repository: Panonim/dynacat
     include-prereleases: true
   - codeberg:redict/redict
 ```
@@ -2102,7 +2124,7 @@ You can also specify the value for this token through an ENV variable using the 
 ```yaml
 services:
   dynacat:
-    image: dynacatapp/dynacat
+    image: Panonim/dynacat
     environment:
       - GITHUB_TOKEN=<your token>
 ```
@@ -2144,7 +2166,7 @@ Display the status of your Docker containers along with an icon and an optional 
 > ```yaml
 > services:
 >   dynacat:
->     image: dynacatapp/dynacat
+>     image: Panonim/dynacat
 >     volumes:
 >       - /var/run/docker.sock:/var/run/docker.sock
 > ```
@@ -2495,7 +2517,7 @@ Example:
 
 ```yaml
 - type: repository
-  repository: dynacatapp/dynacat
+  repository: Panonim/dynacat
   pull-requests-limit: 5
   issues-limit: 3
   commits-limit: 3

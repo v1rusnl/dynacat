@@ -1,11 +1,15 @@
 # https://docs.docker.com/build/building/context/#dockerignore-files
-# Ignore all files by default
-*
-
-# Only add necessary files to the Docker build context (Dockerfiles are always included implicitly)
-!/build/
-!/internal/
-!/pkg/
-!/go.mod
-!/go.sum
-!main.go
+# Ignore OS-specific files and source-related noise, but don't ignore * by default
+# to avoid the CopyIgnoredFile warning when using COPY . /app
+.git
+.github
+docs/
+*.bak
+*.md
+LICENSE
+Dockerfile*
+docker-compose*
+.dockerignore
+.vscode
+.idea
+!docs/dynacat.yml

@@ -21,6 +21,10 @@ function setupCarousels() {
 
     for (let i = 0; i < carouselElements.length; i++) {
         const carousel = carouselElements[i];
+
+        if (carousel.dataset.initialized) continue;
+        carousel.dataset.initialized = "true";
+
         carousel.classList.add("show-right-cutoff");
         const itemsContainer = carousel.getElementsByClassName("carousel-items-container")[0];
 
@@ -207,14 +211,13 @@ function setupSearchBoxes() {
 }
 
 function setupDynamicRelativeTime() {
-    const elements = document.querySelectorAll("[data-dynamic-relative-time]");
     const updateInterval = 60 * 1000;
     let lastUpdateTime = Date.now();
 
-    updateRelativeTimeForElements(elements);
+    updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
 
     const updateElementsAndTimestamp = () => {
-        updateRelativeTimeForElements(elements);
+        updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
         lastUpdateTime = Date.now();
     };
 
@@ -257,6 +260,10 @@ function setupGroups() {
 
     for (let g = 0; g < groups.length; g++) {
         const group = groups[g];
+
+        if (group.dataset.initialized) continue;
+        group.dataset.initialized = "true";
+
         const titles = group.getElementsByClassName("widget-header")[0].children;
         const tabs = group.getElementsByClassName("widget-group-contents")[0].children;
         let current = 0;
@@ -407,6 +414,8 @@ function setupCollapsibleLists() {
             continue;
         }
 
+        if (list.nextElementSibling && list.nextElementSibling.classList.contains("expand-toggle-button")) continue;
+
         attachExpandToggleButton(list);
 
         for (let c = collapseAfter; c < list.children.length; c++) {
@@ -436,6 +445,8 @@ function setupCollapsibleGrids() {
         if (collapseAfterRows == -1) {
             continue;
         }
+
+        if (gridElement.nextElementSibling && gridElement.nextElementSibling.classList.contains("expand-toggle-button")) continue;
 
         const getCardsPerRow = () => {
             return parseInt(getComputedStyle(gridElement).getPropertyValue('--cards-per-row'));
@@ -783,4 +794,226 @@ async function setupPage() {
     }
 }
 
-setupPage();
+async function fetchWidgetContent(widgetElement) {
+    const widgetType = Array.from(widgetElement.classList).find(cls => cls.startsWith('widget-type-'));
+    if (!widgetType) return null;
+
+    try {
+        const pageContent = await fetchPageContent(pageData);
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = pageContent;
+
+        // Find the matching widget in the fetched content
+        const realContainers = Array.from(document.querySelectorAll(".head-widgets, .page-column"));
+        const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
+
+        for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
+            const realWidgets = Array.from(realContainers[i].children);
+            const tempWidgets = Array.from(tempContainers[i].children);
+
+            for (let j = 0; j < Math.min(realWidgets.length, tempWidgets.length); j++) {
+                if (realWidgets[j] === widgetElement) {
+                    return tempWidgets[j];
+                }
+            }
+        }
+    } catch (error) {
+        console.error('Failed to fetch widget content:', error);
+    }
+
+    return null;
+}
+
+async function updateCustomAPIWidget(widgetElement) {
+    const newWidget = await fetchWidgetContent(widgetElement);
+    
+    if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
+        // Store the widget ID before replacement
+        const widgetId = widgetElement.id || widgetElement.dataset.widgetId;
+        
+        // Clear the interval for the old widget
+        if (customAPIWidgetIntervals.has(widgetElement)) {
+            clearInterval(customAPIWidgetIntervals.get(widgetElement));
+            customAPIWidgetIntervals.delete(widgetElement);
+        }
+
+        widgetElement.replaceWith(newWidget);
+
+        const callbacksIndexBefore = contentReadyCallbacks.length;
+
+        setupPopovers();
+        setupCarousels();
+        setupCollapsibleLists();
+        setupCollapsibleGrids();
+        setupGroups();
+        setupMasonries();
+        setupLazyImages();
+        setupTruncatedElementTitles();
+
+        const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
+        for (const cb of newCallbacks) {
+            cb();
+        }
+
+        // Re-setup polling for the new widget if it has an update interval
+        if (newWidget.dataset.updateInterval) {
+            const intervalMs = parseInt(newWidget.dataset.updateInterval, 10);
+            if (!isNaN(intervalMs) && intervalMs > 0) {
+                const intervalId = setInterval(async () => {
+                    if (!document.hidden) {
+                        // Re-query the widget element to get the current version
+                        const currentWidget = newWidget.isConnected ? newWidget : 
+                            document.querySelector(`.widget-type-custom-api[data-update-interval="${intervalMs}"]`);
+                        if (currentWidget) {
+                            await updateCustomAPIWidget(currentWidget);
+                        }
+                    }
+                }, intervalMs);
+                customAPIWidgetIntervals.set(newWidget, intervalId);
+            }
+        }
+    }
+}
+
+const customAPIWidgetIntervals = new Map();
+
+function setupCustomAPIWidgetPolling() {
+    const customAPIWidgets = document.querySelectorAll('.widget-type-custom-api[data-update-interval]');
+    
+    customAPIWidgets.forEach(widget => {
+        const intervalMs = parseInt(widget.dataset.updateInterval, 10);
+        
+        if (isNaN(intervalMs) || intervalMs <= 0) {
+            console.error('Invalid update-interval for custom-api widget:', widget.dataset.updateInterval);
+            return;
+        }
+
+        // Clear existing interval if any
+        if (customAPIWidgetIntervals.has(widget)) {
+            clearInterval(customAPIWidgetIntervals.get(widget));
+        }
+
+        // Set up new interval for this widget
+        const intervalId = setInterval(async () => {
+            if (!document.hidden) {
+                // Re-query to get the current widget element
+                const currentWidget = widget.isConnected ? widget : 
+                    document.querySelector(`.widget-type-custom-api[data-update-interval="${intervalMs}"]`);
+                if (currentWidget) {
+                    await updateCustomAPIWidget(currentWidget);
+                }
+            }
+        }, intervalMs);
+
+        customAPIWidgetIntervals.set(widget, intervalId);
+    });
+
+    // Handle visibility changes for custom-api widgets
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            // Intervals continue running but the callback checks document.hidden
+        } else {
+            // Update all widgets immediately when page becomes visible
+            customAPIWidgetIntervals.forEach((intervalId, widget) => {
+                updateCustomAPIWidget(widget);
+            });
+        }
+    });
+}
+
+async function applyContentUpdate() {
+    const pageContent = await fetchPageContent(pageData);
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = pageContent;
+
+    const realContainers = Array.from(document.querySelectorAll(".head-widgets, .page-column"));
+    const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
+
+    let anyReplaced = false;
+
+    for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
+        const realWidgets = Array.from(realContainers[i].children);
+        const tempWidgets = Array.from(tempContainers[i].children);
+
+        for (let j = 0; j < Math.min(realWidgets.length, tempWidgets.length); j++) {
+            const realWidget = realWidgets[j];
+            const tempWidget = tempWidgets[j];
+
+            if (realWidget.classList.contains("widget-type-custom-api") && realWidget.outerHTML !== tempWidget.outerHTML) {
+                // Clear the interval for the old widget if it has one
+                if (customAPIWidgetIntervals.has(realWidget)) {
+                    clearInterval(customAPIWidgetIntervals.get(realWidget));
+                    customAPIWidgetIntervals.delete(realWidget);
+                }
+                
+                realWidget.replaceWith(tempWidget);
+                anyReplaced = true;
+            }
+        }
+    }
+
+    if (anyReplaced) {
+        const callbacksIndexBefore = contentReadyCallbacks.length;
+
+        setupPopovers();
+        setupCarousels();
+        setupCollapsibleLists();
+        setupCollapsibleGrids();
+        setupGroups();
+        setupMasonries();
+        setupLazyImages();
+        setupTruncatedElementTitles();
+
+        const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
+        for (const cb of newCallbacks) {
+            cb();
+        }
+
+        // Re-setup custom-api widget polling for any replaced widgets
+        setupCustomAPIWidgetPolling();
+    }
+}
+
+let pollingTimeout = null;
+let isPollingFetchInProgress = false;
+
+function startPolling() {
+    if (!pageData.updateInterval || pageData.updateInterval <= 0) return;
+
+    const poll = async () => {
+        if (isPollingFetchInProgress) return;
+
+        if (pollingTimeout) {
+            clearTimeout(pollingTimeout);
+            pollingTimeout = null;
+        }
+
+        isPollingFetchInProgress = true;
+        try {
+            await applyContentUpdate();
+        } finally {
+            isPollingFetchInProgress = false;
+            if (!document.hidden) {
+                pollingTimeout = setTimeout(poll, pageData.updateInterval);
+            }
+        }
+    };
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+            if (pollingTimeout) {
+                clearTimeout(pollingTimeout);
+                pollingTimeout = null;
+            }
+        } else {
+            poll();
+        }
+    });
+
+    poll();
+}
+
+setupPage().then(() => {
+    startPolling();
+    setupCustomAPIWidgetPolling();
+});
