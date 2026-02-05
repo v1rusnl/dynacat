@@ -5,12 +5,12 @@ permissions:
 
 on:
   push:
-    - tags:
-        - '*.*.*'
-    - branches:
-        - 'beta'
-      paths:
-        - '*/**'
+    tags:
+      - '*.*.*'
+    branches:
+      - 'beta'
+    paths:
+      - '*/**'
 
 jobs:
   deploy:
