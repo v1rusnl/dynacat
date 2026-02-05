@@ -49,7 +49,7 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           tags: |
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/dynacat:${{ github.ref_name }}
+            ghcr.io/${{ toLower(github.repository) }}:${{ toLower(github.ref_name) }}
+            docker.io/${{ toLower(secrets.DOCKERHUB_USERNAME) }}/dynacat:${{ toLower(github.ref_name) }}
           file: ./Dockerfile
           context: .
