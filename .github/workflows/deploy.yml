@@ -10,8 +10,6 @@ on:
       - '*.*.*'
     branches:
       - 'beta'
-    paths:
-      - '*/**'
 
 jobs:
   deploy:
@@ -59,22 +57,22 @@ jobs:
           echo "IMAGE_TAG=$(echo '${{ github.ref_name }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
           echo "DOCKERHUB_USER_LOWER=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_ENV
 
-        - name: Image Tagging
-          run: |
-            # basic tags (version)
-            printf "ghcr.io/%s:%s\n" "${IMAGE_REPO}" "${IMAGE_TAG}" > /tmp/image-tags
-            printf "docker.io/%s/dynacat:%s\n" "${DOCKERHUB_USER_LOWER}" "${IMAGE_TAG}" >> /tmp/image-tags
+      - name: Image Tagging
+        run: |
+          # basic tags (version)
+          printf "ghcr.io/%s:%s\n" "${IMAGE_REPO}" "${IMAGE_TAG}" > /tmp/image-tags
+          printf "docker.io/%s/dynacat:%s\n" "${DOCKERHUB_USER_LOWER}" "${IMAGE_TAG}" >> /tmp/image-tags
 
-            # add :latest only when this run is for a tag push
-            if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
-              printf "ghcr.io/%s:latest\n" "${IMAGE_REPO}" >> /tmp/image-tags
-              printf "docker.io/%s/dynacat:latest\n" "${DOCKERHUB_USER_LOWER}" >> /tmp/image-tags
-            fi
+          # add :latest only when this run is for a tag push
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            printf "ghcr.io/%s:latest\n" "${IMAGE_REPO}" >> /tmp/image-tags
+            printf "docker.io/%s/dynacat:latest\n" "${DOCKERHUB_USER_LOWER}" >> /tmp/image-tags
+          fi
 
-            cat /tmp/image-tags
-            echo "IMAGE_TAGS<<EOF" >> $GITHUB_ENV
-            cat /tmp/image-tags >> $GITHUB_ENV
-            echo "EOF" >> $GITHUB_ENV
+          cat /tmp/image-tags
+          echo "IMAGE_TAGS<<EOF" >> $GITHUB_ENV
+          cat /tmp/image-tags >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Build and push Docker images
         uses: docker/build-push-action@v4
