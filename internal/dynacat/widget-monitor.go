@@ -35,7 +35,16 @@ type monitorWidget struct {
 }
 
 func (widget *monitorWidget) initialize() error {
-	widget.withTitle("Monitor").withCacheDuration(5 * time.Minute)
+	widget.withTitle("Monitor").withCacheDuration(2 * time.Minute)
+
+	if widget.UpdateInterval == nil {
+		interval := updateIntervalField(2 * time.Minute)
+		widget.UpdateInterval = &interval
+	}
+
+	if *widget.UpdateInterval <= 0 {
+		return errors.New("update-interval must be greater than 0")
+	}
 
 	return nil
 }

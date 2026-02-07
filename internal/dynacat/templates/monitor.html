@@ -1,5 +1,6 @@
 {{ template "widget-base.html" . }}
 
+
 {{ define "widget-content" }}
 {{ if not (and .ShowFailingOnly (not .HasFailing)) }}
 <ul class="dynamic-columns list-gap-20 list-with-separator">

@@ -3,6 +3,7 @@ package dynacat
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"net"
@@ -28,6 +29,15 @@ type dockerContainersWidget struct {
 
 func (widget *dockerContainersWidget) initialize() error {
 	widget.withTitle("Docker Containers").withCacheDuration(1 * time.Minute)
+
+	if widget.UpdateInterval == nil {
+		interval := updateIntervalField(2 * time.Minute)
+		widget.UpdateInterval = &interval
+	}
+
+	if *widget.UpdateInterval <= 0 {
+		return errors.New("update-interval must be greater than 0")
+	}
 
 	if widget.SockPath == "" {
 		widget.SockPath = "/var/run/docker.sock"
@@ -278,7 +288,6 @@ func isDockerContainerHidden(container *dockerContainerJsonResponse, hideByDefau
 	return hideByDefault
 }
 
-
 func fetchDockerContainersFromSource(
 	source string,
 	category string,
@@ -311,7 +320,6 @@ func fetchDockerContainersFromSource(
 			},
 		}
 	}
-
 
 	fetchAll := ternary(runningOnly, "false", "true")
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

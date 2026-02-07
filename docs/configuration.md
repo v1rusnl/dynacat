@@ -707,6 +707,7 @@ pages:
 | title-url | string | no |
 | hide-header | boolean | no | false |
 | cache | string | no |
+| update-interval | string | no |
 | css-class | string | no |
 
 #### `type`
@@ -739,6 +740,13 @@ cache: 1d    # 1 day
 > [!NOTE]
 >
 > Not all widgets can have their cache duration modified. The calendar and weather widgets update on the hour and this cannot be changed.
+
+#### `update-interval`
+Controls how often the browser fetches new data from the server for this widget. This is a client-side refresh interval that determines how frequently the widget updates in the browser. The value must be specified as a number followed by a time unit: `s` (seconds), `m` (minutes) or `h` (hours). For example: `5s`, `2m`, `1h`.
+
+If not specified, the widget will only update when the page's global update interval triggers (if configured) or as defined by the widget. For example, the `monitor` and `docker-containers` widgets refresh every 2 minutes by default.
+
+**Note:** This only affects how often the browser requests updated content. The server-side caching behavior is controlled separately by the `cache` property.
 
 #### `css-class`
 Set custom CSS classes for the specific widget instance.
@@ -1566,7 +1574,6 @@ Examples:
 | frameless | boolean | no | false |
 | allow-insecure | boolean | no | false |
 | skip-json-validation | boolean | no | false |
-| update-interval | string | no | |
 | template | string | yes | |
 | options | map | no | |
 | parameters | key (string) & value (string|array) | no | |
@@ -1574,26 +1581,6 @@ Examples:
 
 ##### `url`
 The URL to fetch the data from. It must be accessible from the server that Dynacat is running on.
-
-##### `update-interval`
-Controls how often the browser fetches new data from the server for this widget. This is a client-side refresh interval that determines how frequently the widget updates in the browser. The value must be specified as a number followed by a time unit: `s` (seconds) or `h` (hours). For example: `5s`, `30s`, `1h`, `2h`. 
-
-If not specified, the widget will only update when the page's global update interval triggers (if configured). Setting this allows individual custom-api widgets to refresh more frequently than the page's default update interval.
-
-**Note:** This only affects how often the browser requests updated content. The server-side caching behavior is controlled separately by the `cache` property.
-
-**Important:** Only use time units `s` (seconds) or `h` (hours). Using other units like `m` (minutes), `d` (days), or omitting the unit will result in a configuration error.
-
-Example:
-```yaml
-- type: custom-api
-  title: Live Stock Price
-  update-interval: 5s  # Updates every 5 seconds
-  cache: 5s
-  url: https://api.example.com/stock/AAPL
-  template: |
-    <div class="size-h3">${{ .JSON.String "price" }}</div>
-```
 
 ##### `headers`
 Optionally specify the headers that will be sent with the request. Example:
@@ -1963,6 +1950,7 @@ You can hover over the "ERROR" text to view more information.
 | sites | array | yes | |
 | style | string | no | |
 | show-failing-only | boolean | no | false |
+| update-interval | string | no | 2m |
 
 ##### `show-failing-only`
 Shows only a list of failing sites when set to `true`.
@@ -2251,6 +2239,7 @@ If any of the child containers are down, their status will propagate up to the p
 | sock-path | string | no | /var/run/docker.sock |
 | category | string | no | |
 | running-only | boolean | no | false |
+| update-interval | string | no | 2m |
 
 ##### `hide-by-default`
 Whether to hide the containers by default. If set to `true` you'll have to manually add a `dynacat.hide: false` label to each container you want to display. By default all containers will be shown and if you want to hide a specific container you can add a `dynacat.hide: true` label.

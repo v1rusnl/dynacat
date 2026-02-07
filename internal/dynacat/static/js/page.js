@@ -824,73 +824,101 @@ async function fetchWidgetContent(widgetElement) {
     return null;
 }
 
-async function updateCustomAPIWidget(widgetElement) {
+async function updateWidget(widgetElement) {
     const newWidget = await fetchWidgetContent(widgetElement);
     
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
-        // Store the widget ID before replacement
-        const widgetId = widgetElement.id || widgetElement.dataset.widgetId;
+        // For custom-api widgets, only update the content to prevent flashing
+        const isCustomAPI = widgetElement.classList.contains('widget-type-custom-api');
         
-        // Clear the interval for the old widget
-        if (customAPIWidgetIntervals.has(widgetElement)) {
-            clearInterval(customAPIWidgetIntervals.get(widgetElement));
-            customAPIWidgetIntervals.delete(widgetElement);
-        }
+        if (isCustomAPI) {
+            const oldContent = widgetElement.querySelector('.widget-content');
+            const newContent = newWidget.querySelector('.widget-content');
+            
+            if (oldContent && newContent && oldContent.innerHTML !== newContent.innerHTML) {
+                oldContent.innerHTML = newContent.innerHTML;
+                
+                const callbacksIndexBefore = contentReadyCallbacks.length;
 
-        widgetElement.replaceWith(newWidget);
+                setupPopovers();
+                setupCarousels();
+                setupCollapsibleLists();
+                setupCollapsibleGrids();
+                setupGroups();
+                setupMasonries();
+                setupLazyImages();
+                setupTruncatedElementTitles();
 
-        const callbacksIndexBefore = contentReadyCallbacks.length;
+                const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
+                for (const cb of newCallbacks) {
+                    cb();
+                }
+            }
+        } else {
+            // Store the widget ID before replacement
+            const widgetId = widgetElement.id || widgetElement.dataset.widgetId;
+            
+            // Clear the interval for the old widget
+            if (widgetIntervals.has(widgetElement)) {
+                clearInterval(widgetIntervals.get(widgetElement));
+                widgetIntervals.delete(widgetElement);
+            }
 
-        setupPopovers();
-        setupCarousels();
-        setupCollapsibleLists();
-        setupCollapsibleGrids();
-        setupGroups();
-        setupMasonries();
-        setupLazyImages();
-        setupTruncatedElementTitles();
+            widgetElement.replaceWith(newWidget);
 
-        const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
-        for (const cb of newCallbacks) {
-            cb();
-        }
+            const callbacksIndexBefore = contentReadyCallbacks.length;
 
-        // Re-setup polling for the new widget if it has an update interval
-        if (newWidget.dataset.updateInterval) {
-            const intervalMs = parseInt(newWidget.dataset.updateInterval, 10);
-            if (!isNaN(intervalMs) && intervalMs > 0) {
-                const intervalId = setInterval(async () => {
-                    if (!document.hidden) {
-                        // Re-query the widget element to get the current version
-                        const currentWidget = newWidget.isConnected ? newWidget : 
-                            document.querySelector(`.widget-type-custom-api[data-update-interval="${intervalMs}"]`);
-                        if (currentWidget) {
-                            await updateCustomAPIWidget(currentWidget);
+            setupPopovers();
+            setupCarousels();
+            setupCollapsibleLists();
+            setupCollapsibleGrids();
+            setupGroups();
+            setupMasonries();
+            setupLazyImages();
+            setupTruncatedElementTitles();
+
+            const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
+            for (const cb of newCallbacks) {
+                cb();
+            }
+
+            // Re-setup polling for the new widget if it has an update interval
+            if (newWidget.dataset.updateInterval) {
+                const intervalMs = parseInt(newWidget.dataset.updateInterval, 10);
+                if (!isNaN(intervalMs) && intervalMs > 0) {
+                    const intervalId = setInterval(async () => {
+                        if (!document.hidden) {
+                            // Re-query the widget element to get the current version
+                            const currentWidget = newWidget.isConnected ? newWidget : 
+                                document.querySelector(`.widget[data-update-interval="${intervalMs}"]`);
+                            if (currentWidget) {
+                                await updateWidget(currentWidget);
+                            }
                         }
-                    }
-                }, intervalMs);
-                customAPIWidgetIntervals.set(newWidget, intervalId);
+                    }, intervalMs);
+                    widgetIntervals.set(newWidget, intervalId);
+                }
             }
         }
     }
 }
 
-const customAPIWidgetIntervals = new Map();
+const widgetIntervals = new Map();
 
-function setupCustomAPIWidgetPolling() {
-    const customAPIWidgets = document.querySelectorAll('.widget-type-custom-api[data-update-interval]');
+function setupWidgetPolling() {
+    const pollingWidgets = document.querySelectorAll('.widget[data-update-interval]');
     
-    customAPIWidgets.forEach(widget => {
+    pollingWidgets.forEach(widget => {
         const intervalMs = parseInt(widget.dataset.updateInterval, 10);
         
         if (isNaN(intervalMs) || intervalMs <= 0) {
-            console.error('Invalid update-interval for custom-api widget:', widget.dataset.updateInterval);
+            console.error('Invalid update-interval for widget:', widget.dataset.updateInterval);
             return;
         }
 
         // Clear existing interval if any
-        if (customAPIWidgetIntervals.has(widget)) {
-            clearInterval(customAPIWidgetIntervals.get(widget));
+        if (widgetIntervals.has(widget)) {
+            clearInterval(widgetIntervals.get(widget));
         }
 
         // Set up new interval for this widget
@@ -898,24 +926,24 @@ function setupCustomAPIWidgetPolling() {
             if (!document.hidden) {
                 // Re-query to get the current widget element
                 const currentWidget = widget.isConnected ? widget : 
-                    document.querySelector(`.widget-type-custom-api[data-update-interval="${intervalMs}"]`);
+                    document.querySelector(`.widget[data-update-interval="${intervalMs}"]`);
                 if (currentWidget) {
-                    await updateCustomAPIWidget(currentWidget);
+                    await updateWidget(currentWidget);
                 }
             }
         }, intervalMs);
 
-        customAPIWidgetIntervals.set(widget, intervalId);
+        widgetIntervals.set(widget, intervalId);
     });
 
-    // Handle visibility changes for custom-api widgets
+    // Handle visibility changes for polling widgets
     document.addEventListener("visibilitychange", () => {
         if (document.hidden) {
             // Intervals continue running but the callback checks document.hidden
         } else {
             // Update all widgets immediately when page becomes visible
-            customAPIWidgetIntervals.forEach((intervalId, widget) => {
-                updateCustomAPIWidget(widget);
+            widgetIntervals.forEach((intervalId, widget) => {
+                updateWidget(widget);
             });
         }
     });
@@ -939,15 +967,28 @@ async function applyContentUpdate() {
             const realWidget = realWidgets[j];
             const tempWidget = tempWidgets[j];
 
-            if (realWidget.classList.contains("widget-type-custom-api") && realWidget.outerHTML !== tempWidget.outerHTML) {
-                // Clear the interval for the old widget if it has one
-                if (customAPIWidgetIntervals.has(realWidget)) {
-                    clearInterval(customAPIWidgetIntervals.get(realWidget));
-                    customAPIWidgetIntervals.delete(realWidget);
-                }
+            if (realWidget.dataset.updateInterval && realWidget.outerHTML !== tempWidget.outerHTML) {
+                const isCustomAPI = realWidget.classList.contains('widget-type-custom-api');
                 
-                realWidget.replaceWith(tempWidget);
-                anyReplaced = true;
+                if (isCustomAPI) {
+                    // For custom-api widgets, only update the content to prevent flashing
+                    const oldContent = realWidget.querySelector('.widget-content');
+                    const newContent = tempWidget.querySelector('.widget-content');
+                    
+                    if (oldContent && newContent && oldContent.innerHTML !== newContent.innerHTML) {
+                        oldContent.innerHTML = newContent.innerHTML;
+                        anyReplaced = true;
+                    }
+                } else {
+                    // Clear the interval for the old widget if it has one
+                    if (widgetIntervals.has(realWidget)) {
+                        clearInterval(widgetIntervals.get(realWidget));
+                        widgetIntervals.delete(realWidget);
+                    }
+                    
+                    realWidget.replaceWith(tempWidget);
+                    anyReplaced = true;
+                }
             }
         }
     }
@@ -970,7 +1011,7 @@ async function applyContentUpdate() {
         }
 
         // Re-setup custom-api widget polling for any replaced widgets
-        setupCustomAPIWidgetPolling();
+        setupWidgetPolling();
     }
 }
 
@@ -1015,5 +1056,5 @@ function startPolling() {
 
 setupPage().then(() => {
     startPolling();
-    setupCustomAPIWidgetPolling();
+    setupWidgetPolling();
 });

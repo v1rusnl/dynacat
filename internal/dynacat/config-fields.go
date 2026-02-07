@@ -129,7 +129,7 @@ func (d *durationField) UnmarshalYAML(node *yaml.Node) error {
 	return nil
 }
 
-var updateIntervalFieldPattern = regexp.MustCompile(`^(\d+)(s|h)$`)
+var updateIntervalFieldPattern = regexp.MustCompile(`^(\d+)(s|m|h)$`)
 
 type updateIntervalField time.Duration
 
@@ -143,7 +143,7 @@ func (d *updateIntervalField) UnmarshalYAML(node *yaml.Node) error {
 	matches := updateIntervalFieldPattern.FindStringSubmatch(value)
 
 	if len(matches) != 3 {
-		return fmt.Errorf("invalid update-interval format: %s (supported units: s, h)", value)
+		return fmt.Errorf("invalid update-interval format: %s (supported units: s, m, h)", value)
 	}
 
 	duration, err := strconv.Atoi(matches[1])
@@ -154,10 +154,12 @@ func (d *updateIntervalField) UnmarshalYAML(node *yaml.Node) error {
 	switch matches[2] {
 	case "s":
 		*d = updateIntervalField(time.Duration(duration) * time.Second)
+	case "m":
+		*d = updateIntervalField(time.Duration(duration) * time.Minute)
 	case "h":
 		*d = updateIntervalField(time.Duration(duration) * time.Hour)
 	default:
-		return fmt.Errorf("invalid update-interval unit: %s (supported units: s, h)", matches[2])
+		return fmt.Errorf("invalid update-interval unit: %s (supported units: s, m, h)", matches[2])
 	}
 
 	return nil

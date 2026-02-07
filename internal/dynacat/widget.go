@@ -147,23 +147,24 @@ const (
 )
 
 type widgetBase struct {
-	ID                  uint64           `yaml:"-"`
-	Providers           *widgetProviders `yaml:"-"`
-	Type                string           `yaml:"type"`
-	Title               string           `yaml:"title"`
-	TitleURL            string           `yaml:"title-url"`
-	HideHeader          bool             `yaml:"hide-header"`
-	CSSClass            string           `yaml:"css-class"`
-	CustomCacheDuration durationField    `yaml:"cache"`
-	ContentAvailable    bool             `yaml:"-"`
-	WIP                 bool             `yaml:"-"`
-	Error               error            `yaml:"-"`
-	Notice              error            `yaml:"-"`
-	templateBuffer      bytes.Buffer     `yaml:"-"`
-	cacheDuration       time.Duration    `yaml:"-"`
-	cacheType           cacheType        `yaml:"-"`
-	nextUpdate          time.Time        `yaml:"-"`
-	updateRetriedTimes  int              `yaml:"-"`
+	ID                  uint64               `yaml:"-"`
+	Providers           *widgetProviders     `yaml:"-"`
+	Type                string               `yaml:"type"`
+	Title               string               `yaml:"title"`
+	TitleURL            string               `yaml:"title-url"`
+	HideHeader          bool                 `yaml:"hide-header"`
+	CSSClass            string               `yaml:"css-class"`
+	CustomCacheDuration durationField        `yaml:"cache"`
+	UpdateInterval      *updateIntervalField `yaml:"update-interval"`
+	ContentAvailable    bool                 `yaml:"-"`
+	WIP                 bool                 `yaml:"-"`
+	Error               error                `yaml:"-"`
+	Notice              error                `yaml:"-"`
+	templateBuffer      bytes.Buffer         `yaml:"-"`
+	cacheDuration       time.Duration        `yaml:"-"`
+	cacheType           cacheType            `yaml:"-"`
+	nextUpdate          time.Time            `yaml:"-"`
+	updateRetriedTimes  int                  `yaml:"-"`
 }
 
 type widgetProviders struct {

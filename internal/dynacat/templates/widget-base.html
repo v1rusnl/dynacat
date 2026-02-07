@@ -1,4 +1,4 @@
-<div class="widget widget-type-{{ .GetType }}{{ if .CSSClass }} {{ .CSSClass }}{{ end }}"{{ block "widget-data-attrs" . }}{{ end }}>
+<div class="widget widget-type-{{ .GetType }}{{ if .CSSClass }} {{ .CSSClass }}{{ end }}"{{ if .UpdateInterval }} data-update-interval="{{ .UpdateInterval.Milliseconds }}"{{ end }}{{ block "widget-data-attrs" . }}{{ end }}>
     {{- if not .HideHeader }}
     <div class="widget-header">
         {{- if ne "" .TitleURL }}
