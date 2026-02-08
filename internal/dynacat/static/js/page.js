@@ -825,27 +825,32 @@ async function fetchWidgetContent(widgetElement) {
 }
 
 async function updateWidget(widgetElement) {
+    // Store scroll position before update
+    const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
+    const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
+    const scrollBefore = window.scrollY;
+
     const newWidget = await fetchWidgetContent(widgetElement);
-    
+
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
         const oldContent = widgetElement.querySelector('.widget-content');
         const newContent = newWidget.querySelector('.widget-content');
-        
+
         // Check if widget has images that we should preserve
         const hasImages = oldContent && oldContent.querySelector('img[loading="lazy"]') !== null;
         const shouldPreserveContent = hasImages || widgetElement.classList.contains('widget-type-custom-api');
-        
+
         if (shouldPreserveContent && oldContent && newContent) {
             // Update content while preserving cached images
             updateContentPreservingImages(oldContent, newContent);
-            
+
             // Update header if it changed
             const oldHeader = widgetElement.querySelector('.widget-header');
             const newHeader = newWidget.querySelector('.widget-header');
             if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
                 oldHeader.innerHTML = newHeader.innerHTML;
             }
-            
+
             const callbacksIndexBefore = contentReadyCallbacks.length;
 
             setupPopovers();
@@ -861,10 +866,25 @@ async function updateWidget(widgetElement) {
             for (const cb of newCallbacks) {
                 cb();
             }
+
+            // Preserve scroll position after update
+            if (wasAtBottom) {
+                // If user was at bottom, keep them at bottom
+                window.scrollTo({
+                    top: document.documentElement.scrollHeight,
+                    behavior: 'instant'
+                });
+            } else {
+                // Otherwise, restore exact scroll position to prevent jumping
+                window.scrollTo({
+                    top: scrollBefore,
+                    behavior: 'instant'
+                });
+            }
         } else {
             // Store the widget ID before replacement
             const widgetId = widgetElement.id || widgetElement.dataset.widgetId;
-            
+
             // Clear the interval for the old widget
             if (widgetIntervals.has(widgetElement)) {
                 clearInterval(widgetIntervals.get(widgetElement));
@@ -896,7 +916,7 @@ async function updateWidget(widgetElement) {
                     const intervalId = setInterval(async () => {
                         if (!document.hidden) {
                             // Re-query the widget element to get the current version
-                            const currentWidget = newWidget.isConnected ? newWidget : 
+                            const currentWidget = newWidget.isConnected ? newWidget :
                                 document.querySelector(`.widget[data-update-interval="${intervalMs}"]`);
                             if (currentWidget) {
                                 await updateWidget(currentWidget);
@@ -905,6 +925,21 @@ async function updateWidget(widgetElement) {
                     }, intervalMs);
                     widgetIntervals.set(newWidget, intervalId);
                 }
+            }
+
+            // Preserve scroll position after update
+            if (wasAtBottom) {
+                // If user was at bottom, keep them at bottom
+                window.scrollTo({
+                    top: document.documentElement.scrollHeight,
+                    behavior: 'instant'
+                });
+            } else {
+                // Otherwise, restore exact scroll position to prevent jumping
+                window.scrollTo({
+                    top: scrollBefore,
+                    behavior: 'instant'
+                });
             }
         }
     }
@@ -987,6 +1022,11 @@ function setupWidgetPolling() {
 }
 
 async function applyContentUpdate() {
+    // Store scroll position before update
+    const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
+    const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
+    const scrollBefore = window.scrollY;
+
     const pageContent = await fetchPageContent(pageData);
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = pageContent;
@@ -1007,22 +1047,22 @@ async function applyContentUpdate() {
             if (realWidget.dataset.updateInterval && realWidget.outerHTML !== tempWidget.outerHTML) {
                 const oldContent = realWidget.querySelector('.widget-content');
                 const newContent = tempWidget.querySelector('.widget-content');
-                
+
                 // Check if widget has images that we should preserve
                 const hasImages = oldContent && oldContent.querySelector('img[loading="lazy"]') !== null;
                 const shouldPreserveContent = hasImages || realWidget.classList.contains('widget-type-custom-api');
-                
+
                 if (shouldPreserveContent && oldContent && newContent) {
                     // Update content while preserving cached images
                     updateContentPreservingImages(oldContent, newContent);
-                    
+
                     // Update header if it changed
                     const oldHeader = realWidget.querySelector('.widget-header');
                     const newHeader = tempWidget.querySelector('.widget-header');
                     if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
                         oldHeader.innerHTML = newHeader.innerHTML;
                     }
-                    
+
                     anyReplaced = true;
                 } else {
                     // Clear the interval for the old widget if it has one
@@ -1030,7 +1070,7 @@ async function applyContentUpdate() {
                         clearInterval(widgetIntervals.get(realWidget));
                         widgetIntervals.delete(realWidget);
                     }
-                    
+
                     realWidget.replaceWith(tempWidget);
                     anyReplaced = true;
                 }
@@ -1057,6 +1097,21 @@ async function applyContentUpdate() {
 
         // Re-setup custom-api widget polling for any replaced widgets
         setupWidgetPolling();
+
+        // Preserve scroll position after update
+        if (wasAtBottom) {
+            // If user was at bottom, keep them at bottom
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior: 'instant'
+            });
+        } else {
+            // Otherwise, restore exact scroll position to prevent jumping
+            window.scrollTo({
+                top: scrollBefore,
+                behavior: 'instant'
+            });
+        }
     }
 }
 
