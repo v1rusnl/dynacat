@@ -1,0 +1,311 @@
+{{ template "widget-base.html" . }}
+
+{{ define "widget-content" }}
+<style>
+    .playing-sessions {
+        display: flex;
+        flex-direction: column;
+        gap: {{ if .Compact }}0.75rem{{ else }}1rem{{ end }};
+    }
+
+    .playing-host-group {
+        display: flex;
+        flex-direction: column;
+        gap: {{ if .Compact }}0.5rem{{ else }}0.75rem{{ end }};
+    }
+
+    .playing-host-header {
+        font-size: {{ if .Compact }}1.0rem{{ else }}1.15rem{{ end }};
+        font-weight: 600;
+        color: var(--color-primary);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 0.25rem;
+    }
+
+    .playing-session {
+        display: flex;
+        gap: {{ if .Compact }}0.75rem{{ else }}1rem{{ end }};
+        align-items: {{ if .FullThumbnail }}flex-start{{ else }}center{{ end }};
+    }
+
+    .playing-thumbnail {
+        flex-shrink: 0;
+        width: {{ if .Compact }}60px{{ else }}80px{{ end }};
+        height: {{ if and .Compact (not .FullThumbnail) }}60px{{ else if and .Compact .FullThumbnail }}90px{{ else if .FullThumbnail }}120px{{ else }}80px{{ end }};
+        border-radius: 0.25rem;
+        object-fit: cover;
+        background: var(--color-separator);
+    }
+
+    .playing-info {
+        flex: 1;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        gap: {{ if .Compact }}0.25rem{{ else }}0.35rem{{ end }};
+    }
+
+    .playing-user {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: {{ if .Compact }}1.0rem{{ else }}1.15rem{{ end }};
+        color: var(--color-highlight);
+    }
+
+    .playing-indicator {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        display: inline-block;
+        align-self: center;
+        margin: 0;
+    }
+
+    .playing-indicator,
+    .playing-state-text {
+        vertical-align: middle;
+    }
+
+    .playing-state-text {
+        display: inline-flex;
+        align-items: center;
+        line-height: 1;
+    }
+
+    .playing-user > span {
+        line-height: 1;
+    }
+
+    .playing-indicator.playing {
+        background: var(--color-primary);
+        animation: pulse 2s ease-in-out infinite;
+    }
+
+    .playing-indicator.paused {
+        background: #6b7280;
+    }
+
+    @keyframes pulse {
+        0%, 100% {
+            opacity: 1;
+        }
+        50% {
+            opacity: 0.5;
+        }
+    }
+
+    .playing-state-text {
+        font-size: {{ if .Compact }}0.95rem{{ else }}1.05rem{{ end }};
+        color: var(--color-subtext);
+    }
+
+    .playing-title {
+        font-size: {{ if .Compact }}1.3rem{{ else }}1.45rem{{ end }};
+        font-weight: 500;
+        color: var(--color-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .playing-subtitle {
+        font-size: {{ if .Compact }}1.0rem{{ else }}1.15rem{{ end }};
+        color: var(--color-subtext);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .playing-progress-wrapper {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+        margin-top: {{ if .Compact }}0.25rem{{ else }}0.4rem{{ end }};
+    }
+
+    .playing-progress-bar-container {
+        display: flex;
+        align-items: center;
+        width: 100%;
+    }
+
+    .playing-progress-bar {
+        flex: 1;
+        height: {{ if .Compact }}5px{{ else }}6px{{ end }};
+        background: var(--color-separator);
+        border-radius: 10px;
+        overflow: hidden;
+        position: relative;
+    }
+
+    .playing-progress-fill {
+        height: 100%;
+        background: var(--color-primary);
+        border-radius: 10px;
+        transition: width 0.3s ease;
+        min-width: 2px;
+    }
+
+    .playing-time-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: {{ if .Compact }}0.95rem{{ else }}1.05rem{{ end }};
+        color: var(--color-subtext);
+        font-variant-numeric: tabular-nums;
+    }
+
+    .playing-empty {
+        color: var(--color-subtext);
+        font-size: {{ if .Compact }}1.05rem{{ else }}1.2rem{{ end }};
+        text-align: center;
+        padding: 1rem 0;
+    }
+
+    .playing-error {
+        color: var(--color-negative);
+        font-size: 0.9rem;
+        text-align: center;
+        padding: 1rem 0;
+    }
+</style>
+
+{{ if .Error }}
+    <div class="playing-error">
+        {{ .Error }}
+    </div>
+{{ else if and (not .Sessions) (not .GroupByHost) }}
+    <div class="playing-empty">Nothing is playing right now.</div>
+{{ else if .GroupByHost }}
+    {{ if eq (len .SessionsByHost) 0 }}
+        <div class="playing-empty">Nothing is playing right now.</div>
+    {{ else }}
+        <div class="playing-sessions">
+            {{ range $hostKey, $sessions := .SessionsByHost }}
+                {{ if $sessions }}
+                    <div class="playing-host-group">
+                        <div class="playing-host-header">{{ $hostKey }}</div>
+                        {{ range $session := $sessions }}
+                        <div class="playing-session">
+                            {{ if $.ShowThumbnail }}
+                                {{ if $session.ThumbnailURL }}
+                                    <img class="playing-thumbnail" src="{{ $session.ThumbnailURL }}" alt="Thumbnail">
+                                {{ else }}
+                                    <div class="playing-thumbnail"></div>
+                                {{ end }}
+                            {{ end }}
+
+                            <div class="playing-info">
+                                <div class="playing-user">
+                                    {{ if eq $.PlayState "indicator" }}
+                                        <span class="playing-indicator {{ if $session.IsPlaying }}playing{{ else }}paused{{ end }}"></span>
+                                    {{ else }}
+                                        <span class="playing-state-text">[{{ $session.State }}]</span>
+                                    {{ end }}
+                                    <span>{{ $session.UserName }}</span>
+                                </div>
+
+                                <div class="playing-title">{{ $session.Title }}</div>
+
+                                {{ if eq $session.MediaType "episode" }}
+                                    {{ if and $session.ShowTitle (or $session.Season $session.Episode) }}
+                                        <div class="playing-subtitle">
+                                            {{ $session.ShowTitle }}{{ if $session.Season }} - S{{ $session.Season }}{{ end }}{{ if $session.Episode }}E{{ $session.Episode }}{{ end }}
+                                        </div>
+                                    {{ else if $session.ShowTitle }}
+                                        <div class="playing-subtitle">{{ $session.ShowTitle }}</div>
+                                    {{ end }}
+                                {{ else if eq $session.MediaType "track" }}
+                                    {{ if or $session.Artist $session.AlbumTitle }}
+                                        <div class="playing-subtitle">
+                                            {{ if $session.Artist }}{{ $session.Artist }}{{ end }}{{ if and $session.Artist $session.AlbumTitle }} - {{ end }}{{ if $session.AlbumTitle }}{{ $session.AlbumTitle }}{{ end }}
+                                        </div>
+                                    {{ end }}
+                                {{ end }}
+
+                                {{ if and $.ShowProgressBar $session.IsPlaying (gt $session.Duration 0) }}
+                                    <div class="playing-progress-wrapper">
+                                        <div class="playing-progress-bar-container">
+                                            <div class="playing-progress-bar">
+                                                <div class="playing-progress-fill" style="width: {{ $session.Progress }}%"></div>
+                                            </div>
+                                        </div>
+                                        {{ if $.ShowProgressInfo }}
+                                            <div class="playing-time-row">
+                                                <span>{{ $session.FormattedPosition }}</span>
+                                                <span>-{{ $session.FormattedRemaining }}</span>
+                                            </div>
+                                        {{ end }}
+                                    </div>
+                                {{ end }}
+                            </div>
+                        </div>
+                        {{ end }}
+                    </div>
+                {{ end }}
+            {{ end }}
+        </div>
+    {{ end }}
+{{ else }}
+    <div class="playing-sessions">
+        {{ range $session := .Sessions }}
+        <div class="playing-session">
+            {{ if $.ShowThumbnail }}
+                {{ if $session.ThumbnailURL }}
+                    <img class="playing-thumbnail" src="{{ $session.ThumbnailURL }}" alt="Thumbnail">
+                {{ else }}
+                    <div class="playing-thumbnail"></div>
+                {{ end }}
+            {{ end }}
+
+            <div class="playing-info">
+                <div class="playing-user">
+                    {{ if eq $.PlayState "indicator" }}
+                        <span class="playing-indicator {{ if $session.IsPlaying }}playing{{ else }}paused{{ end }}"></span>
+                    {{ else }}
+                        <span class="playing-state-text">[{{ $session.State }}]</span>
+                    {{ end }}
+                    <span>{{ $session.UserName }}</span>
+                </div>
+
+                <div class="playing-title">{{ $session.Title }}</div>
+
+                {{ if eq $session.MediaType "episode" }}
+                    {{ if and $session.ShowTitle (or $session.Season $session.Episode) }}
+                        <div class="playing-subtitle">
+                            {{ $session.ShowTitle }}{{ if $session.Season }} - S{{ $session.Season }}{{ end }}{{ if $session.Episode }}E{{ $session.Episode }}{{ end }}
+                        </div>
+                    {{ else if $session.ShowTitle }}
+                        <div class="playing-subtitle">{{ $session.ShowTitle }}</div>
+                    {{ end }}
+                {{ else if eq $session.MediaType "track" }}
+                    {{ if or $session.Artist $session.AlbumTitle }}
+                        <div class="playing-subtitle">
+                            {{ if $session.Artist }}{{ $session.Artist }}{{ end }}{{ if and $session.Artist $session.AlbumTitle }} - {{ end }}{{ if $session.AlbumTitle }}{{ $session.AlbumTitle }}{{ end }}
+                        </div>
+                    {{ end }}
+                {{ end }}
+
+                {{ if and $.ShowProgressBar $session.IsPlaying (gt $session.Duration 0) }}
+                    <div class="playing-progress-wrapper">
+                        <div class="playing-progress-bar-container">
+                            <div class="playing-progress-bar">
+                                <div class="playing-progress-fill" style="width: {{ $session.Progress }}%"></div>
+                            </div>
+                        </div>
+                        {{ if $.ShowProgressInfo }}
+                            <div class="playing-time-row">
+                                <span>{{ $session.FormattedPosition }}</span>
+                                <span>-{{ $session.FormattedRemaining }}</span>
+                            </div>
+                        {{ end }}
+                    </div>
+                {{ end }}
+            </div>
+        </div>
+        {{ end }}
+    </div>
+{{ end }}
+{{ end }}

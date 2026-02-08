@@ -44,8 +44,8 @@
   - [Twitch Top Games](#twitch-top-games)
   - [iframe](#iframe)
   - [HTML](#html)
-
-
+- [External Integrations](#external-integrations)
+  - [Currently Playing](#currently-playing)
 ## Preconfigured page
 If you don't want to spend time reading through all the available configuration options and just want something to get you going quickly you can use [this `dynacat.yml` file](dynacat.yml) and make changes to it as you see fit. It will give you a page that looks like the following:
 
@@ -2975,3 +2975,120 @@ Example:
 ```
 
 Note the use of `|` after `source:`, this allows you to insert a multi-line string.
+
+# External Integrations
+
+### Currently Playing
+
+Display currently active media sessions from media servers (Plex, Jellyfin, Emby).
+
+Example:
+
+```yaml
+- type: playing
+  hosts:
+    - url: plex:https://plex.example.com
+      token: ${PLEX_TOKEN}
+    - url: jellyfin:https://jellyfin.example.com
+      token: ${JELLYFIN_API_KEY}
+  compact: true
+  show-thumbnail: true
+  show-progress-bar: true
+  group-by-host: false
+```
+
+#### Properties
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| hosts | array | yes | |
+| small-column | boolean | no | false |
+| compact | boolean | no | true |
+| play-state | string | no | indicator |
+| show-thumbnail | boolean | no | false |
+| full-thumbnail | boolean | no | false |
+| show-paused | boolean | no | false |
+| show-progress-bar | boolean | no | false |
+| show-progress-info | boolean | no | true |
+| time-format | string | no | 15:04 |
+| group-by-host | boolean | no | false |
+
+##### `hosts`
+
+An array of media server hosts to check for active sessions.
+
+**Important**: Each host URL must be prefixed with the server type (`plex:`, `jellyfin:`, or `emby:`). For example:
+- `plex:https://192.168.1.10:32400`
+- `jellyfin:http://jellyfin.local:8096`
+- `emby:https://emby.example.com`
+
+Properties for each host:
+
+| Name | Type | Required | Notes |
+| ---- | ---- | -------- | ----- |
+| url | string | yes | Must include server type prefix |
+| token | string | yes | API key or token for authentication |
+
+Example:
+```yaml
+hosts:
+  - url: plex:https://plex.example.com
+    token: ${PLEX_TOKEN}
+  - url: jellyfin:https://jellyfin.example.com
+    token: ${JELLYFIN_API_KEY}
+  - url: emby:https://emby.example.com
+    token: ${EMBY_API_KEY}
+```
+
+##### `small-column`
+Set to `true` if using the widget in a small-sized column.
+
+##### `compact`
+When `true`, uses a more compact layout with condensed spacing and smaller text.
+
+##### `play-state`
+How to display the play state. Options:
+- `indicator`: Pulsing dot (green for playing, gray for paused)
+- `text`: Plain text "[playing]" or "[paused]"
+
+##### `show-thumbnail`
+When `true`, displays thumbnails for the currently playing media.
+
+> [!WARNING]
+> Enabling thumbnails will expose your API keys/tokens in the HTML as they are included in image URLs. Do not enable this for public-facing or internet-exposed instances.
+
+##### `full-thumbnail`
+When `true` and `compact` is `true`, shows full-size thumbnails instead of square aspect ratio.
+
+##### `show-paused`
+When `true`, displays paused sessions in addition to actively playing sessions.
+
+##### `show-progress-bar`
+When `true`, displays an animated progress bar showing playback progress.
+
+##### `show-progress-info`
+When `true`, displays the estimated end time next to the progress bar. Requires `show-progress-bar` to be `true`.
+
+##### `time-format`
+Time format for displaying end times. Options:
+- `15:04`: 24-hour format (e.g., "18:30")
+- `03:04pm`: 12-hour format with AM/PM (e.g., "6:30pm")
+
+##### `group-by-host`
+When `true`, groups sessions by their media server. When `false`, displays all sessions in a unified list.
+
+#### API Access & Tokens
+
+**Plex:**
+- Requires a Plex token. Follow [this guide](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/) to obtain your token.
+
+**Jellyfin:**
+- Requires an API key. Generate one in: Administration → Dashboard → API Keys
+
+**Emby:**
+- Requires an API key. Generate one in: ⚙️ (settings icon) → Advanced → API Keys
+
+#### Notes
+- The widget fetches data every 10 seconds by default (configurable via `update-interval`)
+- Sessions are cached for 5 minutes by default (configurable via `cache`)
+- Progress bars use CSS animation and are cosmetic - they don't auto-refresh when reaching 100%
+- The widget will show partial results if some servers are unreachable
