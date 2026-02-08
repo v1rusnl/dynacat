@@ -3,5 +3,6 @@
 /playground
 /.idea
 /dynacat*.yml
+docs/dynadev.yml
 docker-test/
 Makefile

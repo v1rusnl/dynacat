@@ -32,7 +32,7 @@ jobs:
           path: |
             ~/.cache/go-build
             /home/runner/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-${{ hashFiles('**/go.mod') }}
           restore-keys: |
             ${{ runner.os }}-go-
 
@@ -88,37 +88,12 @@ jobs:
           echo "EOF" >> $GITHUB_ENV
 
       - name: Build and push Docker images
-        env:
-          IMAGE_TAGS_FILE: /tmp/image-tags
-        run: |
-          set -euo pipefail
-
-          if [ ! -f /tmp/image-tags ]; then
-            echo "Image tags file /tmp/image-tags not found"
-            exit 1
-          fi
-
-          TAG_ARGS=$(awk '{printf "--tag %s ", $0}' /tmp/image-tags)
-
-          ATTEMPTS=0
-          MAX_ATTEMPTS=3
-
-          until [ "$ATTEMPTS" -ge "$MAX_ATTEMPTS" ]; do
-            ATTEMPTS=$((ATTEMPTS+1))
-            echo "Build attempt $ATTEMPTS/$MAX_ATTEMPTS"
-
-            if docker buildx build --push --platform linux/amd64,linux/arm64,linux/arm/v7 $TAG_ARGS --file ./Dockerfile .; then
-              echo "Build and push succeeded"
-              exit 0
-            fi
-
-            echo "Build attempt $ATTEMPTS failed"
-            if [ "$ATTEMPTS" -lt "$MAX_ATTEMPTS" ]; then
-              SLEEP_SECONDS=$((ATTEMPTS * 5))
-              echo "Retrying after $SLEEP_SECONDS seconds..."
-              sleep $SLEEP_SECONDS
-            fi
-          done
-
-          echo "Build failed after $MAX_ATTEMPTS attempts"
-          exit 1
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64,linux/arm64,linux/arm/v7
+          tags: ${{ env.IMAGE_TAGS }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
