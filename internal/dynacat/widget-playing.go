@@ -56,19 +56,19 @@ type jellyfinEmbySessionsResponse []struct {
 }
 
 type playingWidget struct {
-	widgetBase       `yaml:",inline"`
-	Hosts            []PlayingHostConfig `yaml:"hosts"`
-	SmallColumn      bool                `yaml:"small-column"`
-	Compact          bool                `yaml:"compact"`
-	PlayState        string              `yaml:"play-state"`
-	ShowThumbnail    bool                `yaml:"show-thumbnail"`
-	FullThumbnail    bool                `yaml:"full-thumbnail"`
-	ShowPaused       bool                `yaml:"show-paused"`
-	ShowProgressBar  bool                `yaml:"show-progress-bar"`
-	ShowProgressInfo bool                `yaml:"show-progress-info"`
-	TimeFormat       string              `yaml:"time-format"`
-	GroupByHost      bool                `yaml:"group-by-host"`
-	Debug            bool                `yaml:"debug"`
+	widgetBase  `yaml:",inline"`
+	Hosts       []PlayingHostConfig `yaml:"hosts"`
+	SmallColumn bool                `yaml:"small-column"`
+	// `compact` option removed — layouts use the default (non-compact) sizing
+	PlayState        string `yaml:"play-state"`
+	ShowThumbnail    bool   `yaml:"show-thumbnail"`
+	FullThumbnail    bool   `yaml:"full-thumbnail"`
+	ShowPaused       bool   `yaml:"show-paused"`
+	ShowProgressBar  bool   `yaml:"show-progress-bar"`
+	ShowProgressInfo bool   `yaml:"show-progress-info"`
+	TimeFormat       string `yaml:"time-format"`
+	GroupByHost      bool   `yaml:"group-by-host"`
+	Debug            bool   `yaml:"debug"`
 
 	mu             sync.RWMutex              `yaml:"-"`
 	Sessions       []mediaSession            `yaml:"-"`
@@ -126,7 +126,7 @@ func (widget *playingWidget) initialize() error {
 		widget.PlayState = "indicator"
 	}
 	if widget.TimeFormat == "" {
-		widget.TimeFormat = "15:04"
+		widget.TimeFormat = "24h"
 	}
 	if !widget.ShowProgressBar {
 		widget.ShowProgressInfo = false
@@ -504,11 +504,23 @@ func (widget *playingWidget) calculateProgress(session *mediaSession) {
 	session.RemainingSeconds = int(remainingMs / 1000)
 
 	endTime := time.Now().Add(time.Duration(remainingMs) * time.Millisecond)
-	session.EndTime = endTime.Format(widget.TimeFormat)
+	session.EndTime = endTime.Format(widget.timeLayout())
 
 	session.FormattedDuration = formatDuration(session.Duration)
 	session.FormattedPosition = formatDuration(session.Offset)
 	session.FormattedRemaining = formatDuration(remainingMs)
+}
+
+func (widget *playingWidget) timeLayout() string {
+	tf := strings.ToLower(strings.TrimSpace(widget.TimeFormat))
+	switch tf {
+	case "24h":
+		return "15:04"
+	case "12h":
+		return "03:04pm"
+	default:
+		return widget.TimeFormat
+	}
 }
 
 func formatDuration(ms int64) string {

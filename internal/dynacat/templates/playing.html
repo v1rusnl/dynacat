@@ -5,17 +5,17 @@
     .playing-sessions {
         display: flex;
         flex-direction: column;
-        gap: {{ if .Compact }}0.75rem{{ else }}1rem{{ end }};
+        gap: 1rem;
     }
 
     .playing-host-group {
         display: flex;
         flex-direction: column;
-        gap: {{ if .Compact }}0.5rem{{ else }}0.75rem{{ end }};
+        gap: 0.75rem;
     }
 
     .playing-host-header {
-        font-size: {{ if .Compact }}1.0rem{{ else }}1.15rem{{ end }};
+        font-size: 1.15rem;
         font-weight: 600;
         color: var(--color-primary);
         text-transform: uppercase;
@@ -25,14 +25,14 @@
 
     .playing-session {
         display: flex;
-        gap: {{ if .Compact }}0.75rem{{ else }}1rem{{ end }};
+        gap: 1rem;
         align-items: {{ if .FullThumbnail }}flex-start{{ else }}center{{ end }};
     }
 
     .playing-thumbnail {
         flex-shrink: 0;
-        width: {{ if .Compact }}60px{{ else }}80px{{ end }};
-        height: {{ if and .Compact (not .FullThumbnail) }}60px{{ else if and .Compact .FullThumbnail }}90px{{ else if .FullThumbnail }}120px{{ else }}80px{{ end }};
+        width: 80px;
+        height: {{ if .FullThumbnail }}120px{{ else }}80px{{ end }};
         border-radius: 0.25rem;
         object-fit: cover;
         background: var(--color-separator);
@@ -43,14 +43,14 @@
         min-width: 0;
         display: flex;
         flex-direction: column;
-        gap: {{ if .Compact }}0.25rem{{ else }}0.35rem{{ end }};
+        gap: 0.35rem;
     }
 
     .playing-user {
         display: flex;
         align-items: center;
         gap: 0.6rem;
-        font-size: {{ if .Compact }}1.0rem{{ else }}1.15rem{{ end }};
+        font-size: 1.15rem;
         color: var(--color-highlight);
     }
 
@@ -98,12 +98,12 @@
     }
 
     .playing-state-text {
-        font-size: {{ if .Compact }}0.95rem{{ else }}1.05rem{{ end }};
+        font-size: 1.05rem;
         color: var(--color-subtext);
     }
 
     .playing-title {
-        font-size: {{ if .Compact }}1.3rem{{ else }}1.45rem{{ end }};
+        font-size: 1.45rem;
         font-weight: 500;
         color: var(--color-primary);
         overflow: hidden;
@@ -112,7 +112,7 @@
     }
 
     .playing-subtitle {
-        font-size: {{ if .Compact }}1.0rem{{ else }}1.15rem{{ end }};
+        font-size: 1.15rem;
         color: var(--color-subtext);
         overflow: hidden;
         text-overflow: ellipsis;
@@ -123,7 +123,7 @@
         display: flex;
         flex-direction: column;
         gap: 0.25rem;
-        margin-top: {{ if .Compact }}0.25rem{{ else }}0.4rem{{ end }};
+        margin-top: 0.4rem;
     }
 
     .playing-progress-bar-container {
@@ -134,7 +134,7 @@
 
     .playing-progress-bar {
         flex: 1;
-        height: {{ if .Compact }}5px{{ else }}6px{{ end }};
+        height: 6px;
         background: var(--color-separator);
         border-radius: 10px;
         overflow: hidden;
@@ -152,14 +152,14 @@
     .playing-time-row {
         display: flex;
         justify-content: space-between;
-        font-size: {{ if .Compact }}0.95rem{{ else }}1.05rem{{ end }};
+        font-size: 1.05rem;
         color: var(--color-subtext);
         font-variant-numeric: tabular-nums;
     }
 
     .playing-empty {
         color: var(--color-subtext);
-        font-size: {{ if .Compact }}1.05rem{{ else }}1.2rem{{ end }};
+        font-size: 1.2rem;
         text-align: center;
         padding: 1rem 0;
     }

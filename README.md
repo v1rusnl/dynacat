@@ -3,7 +3,7 @@
 <p align="center">
   <a href="#installation">Install</a> •
   <a href="docs/configuration.md#configuring-dynacat">Configuration</a> •
-  <a href="https://discord.gg/mUqTzrfjFP">Discord (Soon)</a> •
+  <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
 </p>
 <p align="center">
   <a href="https://github.com/glanceapp/community-widgets">Glance Community widgets</a> •
