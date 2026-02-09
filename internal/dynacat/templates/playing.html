@@ -26,16 +26,21 @@
     .playing-session {
         display: flex;
         gap: 1rem;
-        align-items: {{ if .FullThumbnail }}flex-start{{ else }}center{{ end }};
+        align-items: center;
     }
 
     .playing-thumbnail {
         flex-shrink: 0;
         width: 80px;
-        height: {{ if .FullThumbnail }}120px{{ else }}80px{{ end }};
+        height: 120px;
         border-radius: 0.25rem;
-        object-fit: cover;
+        object-fit: contain;
         background: var(--color-separator);
+    }
+
+    img.playing-thumbnail {
+        background: transparent;
+        display: block;
     }
 
     .playing-info {

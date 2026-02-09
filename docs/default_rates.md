@@ -21,4 +21,7 @@
 | Markets | 10m |
 | Twitch Channels | 15m |
 | Twitch Top Games | 35m |
+
+| External Integration | Default Update Interval |
+| --- | ---:|
 | Currently Playing | 5s |

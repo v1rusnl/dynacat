@@ -62,7 +62,6 @@ type playingWidget struct {
 	// `compact` option removed — layouts use the default (non-compact) sizing
 	PlayState        string `yaml:"play-state"`
 	ShowThumbnail    bool   `yaml:"show-thumbnail"`
-	FullThumbnail    bool   `yaml:"full-thumbnail"`
 	ShowPaused       bool   `yaml:"show-paused"`
 	ShowProgressBar  bool   `yaml:"show-progress-bar"`
 	ShowProgressInfo bool   `yaml:"show-progress-info"`
@@ -128,6 +127,22 @@ func (widget *playingWidget) initialize() error {
 	if widget.TimeFormat == "" {
 		widget.TimeFormat = "24h"
 	}
+
+	// Boolean defaults (treat zero value as unspecified)
+	if !widget.ShowThumbnail {
+		widget.ShowThumbnail = true
+	}
+	if !widget.ShowProgressBar {
+		widget.ShowProgressBar = true
+	}
+	if !widget.ShowProgressInfo {
+		widget.ShowProgressInfo = true
+	}
+
+	// Explicit default for grouping
+	widget.GroupByHost = false
+
+	// Ensure progress info is disabled if there's no progress bar
 	if !widget.ShowProgressBar {
 		widget.ShowProgressInfo = false
 	}

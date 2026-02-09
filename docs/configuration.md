@@ -3004,10 +3004,9 @@ Example:
 | hosts | array | yes | |
 | small-column | boolean | no | false |
 | play-state | string | no | indicator |
-| show-thumbnail | boolean | no | false |
-| full-thumbnail | boolean | no | false |
+| show-thumbnail | boolean | no | true |
 | show-paused | boolean | no | false |
-| show-progress-bar | boolean | no | false |
+| show-progress-bar | boolean | no | true |
 | show-progress-info | boolean | no | true |
 | time-format | string | no | 24h |
 | group-by-host | boolean | no | false |
@@ -3054,10 +3053,6 @@ When `true`, displays thumbnails for the currently playing media.
 
 > [!WARNING]
 > Enabling thumbnails will expose your API keys/tokens in the HTML as they are included in image URLs. Do not enable this for public-facing or internet-exposed instances.
-
-##### `full-thumbnail`
-When `true`, shows full-size thumbnails instead of square aspect ratio.
-
 ##### `show-paused`
 When `true`, displays paused sessions in addition to actively playing sessions.
 
