@@ -1978,6 +1978,7 @@ Properties for each site:
 | ---- | ---- | -------- | ------- |
 | title | string | yes | |
 | url | string | yes | |
+| description | string | no | |
 | check-url | string | no | |
 | error-url | string | no | |
 | icon | string | no | |
