@@ -14,6 +14,8 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - name: Checkout the target Git reference
         uses: actions/checkout@v4
@@ -21,10 +23,10 @@ jobs:
           fetch-depth: 0
 
       - name: Log in to Docker Hub
-        if: github.event_name != 'pull_request' && secrets.DOCKERHUB_USERNAME != ''
+        if: github.event_name != 'pull_request' && env.DOCKERHUB_USERNAME != ''
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Golang
@@ -42,7 +44,7 @@ jobs:
         run: |
           echo "IMAGE_REPO=$(echo ${GITHUB_REPOSITORY} | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
           echo "ACTOR=$(echo ${GITHUB_ACTOR} | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
-          echo "DOCKERHUB_USER_LOWER=$(echo '${{ secrets.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
+          echo "DOCKERHUB_USER_LOWER=$(echo '${{ env.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -57,7 +59,7 @@ jobs:
         with:
           images: |
             ghcr.io/${{ env.IMAGE_REPO }}
-            ${{ secrets.DOCKERHUB_USERNAME != '' && format('docker.io/{0}/dynacat', env.DOCKERHUB_USER_LOWER) || '' }}
+            ${{ env.DOCKERHUB_USERNAME != '' && format('docker.io/{0}/dynacat', env.DOCKERHUB_USER_LOWER) || '' }}
           tags: |
             type=ref,event=branch
             type=sha,prefix=beta-,enable=${{ github.ref == 'refs/heads/beta' }}
