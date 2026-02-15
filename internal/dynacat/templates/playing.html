@@ -32,15 +32,28 @@
     .playing-thumbnail {
         flex-shrink: 0;
         width: 80px;
-        height: 120px;
+        height: 80px;
         border-radius: 0.25rem;
-        object-fit: contain;
+        overflow: hidden;
         background: var(--color-separator);
+        display: inline-block;
     }
 
-    img.playing-thumbnail {
+    .playing-thumbnail.playing-portrait {
+        /* make portrait-oriented covers taller and remove bg color */
+        height: 120px;
         background: transparent;
-        display: block;
+    }
+
+    .playing-thumbnail-img {
+        width: 100% !important;
+        height: 100% !important;
+        object-fit: contain !important;
+        display: block !important;
+        background: transparent !important;
+    }
+    .playing-thumbnail-img.playing-crop {
+        object-fit: cover !important;
     }
 
     .playing-info {
@@ -193,10 +206,12 @@
                     <div class="playing-host-group">
                         <div class="playing-host-header">{{ $hostKey }}</div>
                         {{ range $session := $sessions }}
-                        <div class="playing-session">
+                        <div class="playing-session" data-duration="{{ $session.Duration }}" data-offset="{{ $session.Offset }}" data-playing="{{ $session.IsPlaying }}">
                             {{ if $.ShowThumbnail }}
                                 {{ if $session.ThumbnailURL }}
-                                    <img class="playing-thumbnail" src="{{ $session.ThumbnailURL }}" alt="Thumbnail">
+                                    <div class="playing-thumbnail">
+                                        <img class="playing-thumbnail-img" src="{{ $session.ThumbnailURL }}" alt="Thumbnail">
+                                    </div>
                                 {{ else }}
                                     <div class="playing-thumbnail"></div>
                                 {{ end }}
@@ -244,10 +259,12 @@
 {{ else }}
     <div class="playing-sessions">
         {{ range $session := .Sessions }}
-        <div class="playing-session">
+        <div class="playing-session" data-duration="{{ $session.Duration }}" data-offset="{{ $session.Offset }}" data-playing="{{ $session.IsPlaying }}">
             {{ if $.ShowThumbnail }}
                 {{ if $session.ThumbnailURL }}
-                    <img class="playing-thumbnail" src="{{ $session.ThumbnailURL }}" alt="Thumbnail">
+                    <div class="playing-thumbnail">
+                        <img class="playing-thumbnail-img" src="{{ $session.ThumbnailURL }}" alt="Thumbnail">
+                    </div>
                 {{ else }}
                     <div class="playing-thumbnail"></div>
                 {{ end }}

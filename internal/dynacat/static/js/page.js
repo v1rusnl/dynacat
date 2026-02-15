@@ -776,6 +776,7 @@ async function setupPage() {
         setupMasonries();
         setupDynamicRelativeTime();
         setupLazyImages();
+        setupPlayingProgressUpdater();
     } finally {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");
@@ -867,6 +868,10 @@ async function updateWidget(widgetElement) {
                 cb();
             }
 
+            // Update any local playing progress updaters and thumbnail cropping after content changes
+            setupPlayingProgressUpdater();
+            setupPlayingThumbnailCropping();
+
             // Preserve scroll position after update
             if (wasAtBottom) {
                 // If user was at bottom, keep them at bottom
@@ -904,6 +909,8 @@ async function updateWidget(widgetElement) {
 
             // Re-setup polling for the new widget if it has an update interval
             setupWidgetPolling();
+            setupPlayingProgressUpdater();
+            setupPlayingThumbnailCropping();
 
             // Preserve scroll position after update
             if (wasAtBottom) {
@@ -968,6 +975,153 @@ function remainingDelayMs(intervalMs, lastRunAt) {
 
 const widgetPollingStates = new Map();
 let widgetPollingVisibilityListenerInitialized = false;
+
+// Local playing progress updaters keyed by widget element
+const playingUpdaters = new Map();
+
+function clearPlayingUpdater(widget) {
+    const state = playingUpdaters.get(widget);
+    if (!state) return;
+    if (state.intervalId != null) {
+        clearInterval(state.intervalId);
+    }
+    playingUpdaters.delete(widget);
+}
+
+function formatDurationMs(ms) {
+    ms = Math.max(0, Math.floor(ms));
+    const totalSeconds = Math.floor(ms / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours >= 1) {
+        return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function updatePlayingSessionsForWidget(widget, tickMs) {
+    const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
+    sessions.forEach(sess => {
+        const duration = Number(sess.dataset.duration);
+        if (!duration || duration <= 0) return;
+
+        // maintain current offset in dataset.currentOffset to avoid drifting the original value
+        let current = Number(sess.dataset.currentOffset || sess.dataset.offset || 0);
+        const isPlaying = sess.dataset.playing === 'true' || sess.dataset.playing === '1';
+
+        if (isPlaying) {
+            current = current + tickMs;
+            if (current > duration) current = duration;
+        }
+
+        sess.dataset.currentOffset = String(current);
+
+        const percent = Math.min(100, Math.round((current / duration) * 100));
+
+        const fill = sess.querySelector('.playing-progress-fill');
+        if (fill) {
+            fill.style.width = percent + '%';
+        }
+
+        const timeRow = sess.querySelector('.playing-time-row');
+        if (timeRow) {
+            const posElem = timeRow.children[0];
+            const remElem = timeRow.children[1];
+            if (posElem) posElem.textContent = formatDurationMs(current);
+            if (remElem) {
+                const remaining = Math.max(0, duration - current);
+                remElem.textContent = '-' + formatDurationMs(remaining);
+            }
+        }
+    });
+}
+
+function setupPlayingProgressUpdater() {
+    const widgets = document.querySelectorAll('.widget[data-update-interval]');
+    const seen = new Set();
+
+    widgets.forEach(widget => {
+        seen.add(widget);
+        const intervalMs = parseInt(widget.dataset.updateInterval, 10) || 1000;
+
+        // If updater already exists, update interval if changed
+        const existing = playingUpdaters.get(widget);
+        if (existing) {
+            if (existing.intervalMs !== intervalMs) {
+                clearPlayingUpdater(widget);
+            } else {
+                // keep existing
+                return;
+            }
+        }
+
+        // initialize current offsets from server-provided offset
+        const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
+        sessions.forEach(s => {
+            s.dataset.currentOffset = s.dataset.offset || '0';
+        });
+
+        // run an immediate update then schedule repeating updates using widget's interval
+        updatePlayingSessionsForWidget(widget, 0);
+
+        const intervalId = setInterval(() => updatePlayingSessionsForWidget(widget, intervalMs), intervalMs);
+
+        playingUpdaters.set(widget, { intervalId, intervalMs });
+    });
+
+    // clear updaters for widgets that no longer exist
+    Array.from(playingUpdaters.keys()).forEach(widget => {
+        if (!seen.has(widget)) {
+            clearPlayingUpdater(widget);
+        }
+    });
+
+    // Also ensure thumbnail cropping is applied for current widgets
+    setupPlayingThumbnailCropping();
+}
+
+function setupPlayingThumbnailCropping() {
+    const imgs = document.querySelectorAll('.playing-thumbnail-img');
+
+    imgs.forEach(img => {
+        const container = img.closest('.playing-thumbnail');
+        const apply = () => {
+            // Guard in case image has no natural sizes
+            if (!img.naturalWidth || !img.naturalHeight) {
+                // keep default (contain)
+                img.classList.remove('playing-crop');
+                if (container) container.classList.remove('playing-portrait');
+                return;
+            }
+
+            if (img.naturalWidth > img.naturalHeight) {
+                img.classList.add('playing-crop');
+                if (container) container.classList.remove('playing-portrait');
+            } else if (img.naturalHeight > img.naturalWidth) {
+                // portrait: make container taller and remove background
+                img.classList.remove('playing-crop');
+                if (container) container.classList.add('playing-portrait');
+            } else {
+                // square
+                img.classList.remove('playing-crop');
+                if (container) container.classList.remove('playing-portrait');
+            }
+        };
+
+        if (img.complete) {
+            apply();
+        } else {
+            img.addEventListener('load', apply, { once: true });
+            img.addEventListener('error', () => {
+                img.classList.remove('playing-crop');
+                if (container) container.classList.remove('playing-portrait');
+            }, { once: true });
+        }
+    });
+}
 
 function clearWidgetPollingTimeout(state) {
     if (state.timeoutId != null) {
@@ -1155,6 +1309,7 @@ async function applyContentUpdate() {
         setupMasonries();
         setupLazyImages();
         setupTruncatedElementTitles();
+        setupPlayingThumbnailCropping();
 
         const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
         for (const cb of newCallbacks) {
@@ -1163,6 +1318,7 @@ async function applyContentUpdate() {
 
         // Re-setup custom-api widget polling for any replaced widgets
         setupWidgetPolling();
+        setupPlayingProgressUpdater();
 
         // Preserve scroll position after update
         if (wasAtBottom) {
