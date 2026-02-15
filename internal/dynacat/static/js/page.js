@@ -796,40 +796,35 @@ async function setupPage() {
 }
 
 async function fetchWidgetContent(widgetElement) {
-    const widgetType = Array.from(widgetElement.classList).find(cls => cls.startsWith('widget-type-'));
-    if (!widgetType) return null;
-
-    try {
-        const pageContent = await fetchPageContent(pageData);
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = pageContent;
-
-        // Find the matching widget in the fetched content
-        const realContainers = Array.from(document.querySelectorAll(".head-widgets, .page-column"));
-        const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
-
-        for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
-            const realWidgets = Array.from(realContainers[i].children);
-            const tempWidgets = Array.from(tempContainers[i].children);
-
-            for (let j = 0; j < Math.min(realWidgets.length, tempWidgets.length); j++) {
-                if (realWidgets[j] === widgetElement) {
-                    return tempWidgets[j];
-                }
-            }
-        }
-    } catch (error) {
-        console.error('Failed to fetch widget content:', error);
+    const widgetId = widgetElement.dataset.widgetId;
+    if (!widgetId) {
+        return null;
     }
 
-    return null;
+    try {
+        const response = await fetch(`${pageData.baseURL}/api/widgets/${widgetId}/content/`);
+        if (!response.ok) {
+            throw new Error(`Widget content request failed (${response.status})`);
+        }
+
+        const widgetHtml = await response.text();
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = widgetHtml;
+
+        return tempDiv.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+    } catch (error) {
+        console.error('Failed to fetch widget content:', error);
+        return null;
+    }
 }
 
 async function updateWidget(widgetElement) {
+    setupUserScrollIntentTracking();
+
     // Store scroll position before update
+    const refreshStartedAt = nowMs();
     const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
     const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
-    const scrollBefore = window.scrollY;
 
     const newWidget = await fetchWidgetContent(widgetElement);
 
@@ -872,20 +867,7 @@ async function updateWidget(widgetElement) {
             setupPlayingProgressUpdater();
             setupPlayingThumbnailCropping();
 
-            // Preserve scroll position after update
-            if (wasAtBottom) {
-                // If user was at bottom, keep them at bottom
-                window.scrollTo({
-                    top: document.documentElement.scrollHeight,
-                    behavior: 'instant'
-                });
-            } else {
-                // Otherwise, restore exact scroll position to prevent jumping
-                window.scrollTo({
-                    top: scrollBefore,
-                    behavior: 'instant'
-                });
-            }
+            restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
         } else {
             clearWidgetPollingState(widgetElement);
 
@@ -912,20 +894,7 @@ async function updateWidget(widgetElement) {
             setupPlayingProgressUpdater();
             setupPlayingThumbnailCropping();
 
-            // Preserve scroll position after update
-            if (wasAtBottom) {
-                // If user was at bottom, keep them at bottom
-                window.scrollTo({
-                    top: document.documentElement.scrollHeight,
-                    behavior: 'instant'
-                });
-            } else {
-                // Otherwise, restore exact scroll position to prevent jumping
-                window.scrollTo({
-                    top: scrollBefore,
-                    behavior: 'instant'
-                });
-            }
+            restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
         }
     }
 }
@@ -962,6 +931,69 @@ function updateContentPreservingImages(oldContent, newContent) {
 
 function nowMs() {
     return Date.now();
+}
+
+let userScrollIntentTrackingInitialized = false;
+let lastUserScrollIntentAt = 0;
+let pendingScrollRestoreFrameId = null;
+
+function setupUserScrollIntentTracking() {
+    if (userScrollIntentTrackingInitialized) {
+        return;
+    }
+
+    const markUserScrollIntent = (event) => {
+        if (event.type === "keydown") {
+            const key = event.key;
+            if (key !== "ArrowUp" && key !== "ArrowDown" && key !== "PageUp" && key !== "PageDown" && key !== "Home" && key !== "End" && key !== " ") {
+                return;
+            }
+        }
+
+        lastUserScrollIntentAt = nowMs();
+
+        // Cancel any pending scroll restoration
+        if (pendingScrollRestoreFrameId !== null) {
+            cancelAnimationFrame(pendingScrollRestoreFrameId);
+            pendingScrollRestoreFrameId = null;
+        }
+    };
+
+    window.addEventListener("wheel", markUserScrollIntent, { passive: true });
+    window.addEventListener("touchmove", markUserScrollIntent, { passive: true });
+    window.addEventListener("keydown", markUserScrollIntent, { passive: true });
+
+    userScrollIntentTrackingInitialized = true;
+}
+
+function restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt) {
+    if (!wasAtBottom) {
+        return;
+    }
+
+    // If user scrolled recently (within last 2 seconds), respect their intent
+    const recentScrollThresholdMs = 2000;
+    const shouldSkipRestore = () => {
+        const timeSinceLastScroll = nowMs() - lastUserScrollIntentAt;
+        return timeSinceLastScroll < recentScrollThresholdMs;
+    };
+
+    const restore = () => {
+        if (shouldSkipRestore()) {
+            pendingScrollRestoreFrameId = null;
+            return;
+        }
+
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        pendingScrollRestoreFrameId = null;
+    };
+
+    // Run immediately and once more on the next frame to absorb layout shifts.
+    restore();
+
+    if (!shouldSkipRestore()) {
+        pendingScrollRestoreFrameId = requestAnimationFrame(restore);
+    }
 }
 
 function remainingDelayMs(intervalMs, lastRunAt) {
@@ -1246,10 +1278,12 @@ function setupWidgetPolling() {
 }
 
 async function applyContentUpdate() {
+    setupUserScrollIntentTracking();
+
     // Store scroll position before update
+    const refreshStartedAt = nowMs();
     const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
     const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
-    const scrollBefore = window.scrollY;
 
     const pageContent = await fetchPageContent(pageData);
     const tempDiv = document.createElement("div");
@@ -1320,20 +1354,7 @@ async function applyContentUpdate() {
         setupWidgetPolling();
         setupPlayingProgressUpdater();
 
-        // Preserve scroll position after update
-        if (wasAtBottom) {
-            // If user was at bottom, keep them at bottom
-            window.scrollTo({
-                top: document.documentElement.scrollHeight,
-                behavior: 'instant'
-            });
-        } else {
-            // Otherwise, restore exact scroll position to prevent jumping
-            window.scrollTo({
-                top: scrollBefore,
-                behavior: 'instant'
-            });
-        }
+        restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
     }
 }
 

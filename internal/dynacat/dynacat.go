@@ -36,8 +36,9 @@ type application struct {
 
 	parsedManifest []byte
 
-	slugToPage map[string]*page
-	widgetByID map[uint64]widget
+	slugToPage   map[string]*page
+	widgetByID   map[uint64]widget
+	widgetToPage map[uint64]*page
 
 	RequiresAuth           bool
 	authSecretKey          []byte
@@ -48,11 +49,12 @@ type application struct {
 
 func newApplication(c *config) (*application, error) {
 	app := &application{
-		Version:    buildVersion,
-		CreatedAt:  time.Now(),
-		Config:     *c,
-		slugToPage: make(map[string]*page),
-		widgetByID: make(map[uint64]widget),
+		Version:      buildVersion,
+		CreatedAt:    time.Now(),
+		Config:       *c,
+		slugToPage:   make(map[string]*page),
+		widgetByID:   make(map[uint64]widget),
+		widgetToPage: make(map[uint64]*page),
 	}
 	config := &app.Config
 
@@ -192,10 +194,14 @@ func newApplication(c *config) (*application, error) {
 			page.DesktopNavigationWidth = page.Width
 		}
 
-		for i := range page.HeadWidgets {
-			widget := page.HeadWidgets[i]
+		registerWidget := func(widget widget) {
 			app.widgetByID[widget.GetID()] = widget
+			app.widgetToPage[widget.GetID()] = page
 			widget.setProviders(providers)
+		}
+
+		for i := range page.HeadWidgets {
+			registerWidget(page.HeadWidgets[i])
 		}
 
 		for c := range page.Columns {
@@ -206,9 +212,7 @@ func newApplication(c *config) (*application, error) {
 			}
 
 			for w := range column.Widgets {
-				widget := column.Widgets[w]
-				app.widgetByID[widget.GetID()] = widget
-				widget.setProviders(providers)
+				registerWidget(column.Widgets[w])
 			}
 		}
 	}
@@ -472,27 +476,38 @@ func (a *application) handleNotFound(w http.ResponseWriter, _ *http.Request) {
 	w.Write([]byte("Page not found"))
 }
 
-func (a *application) handleWidgetRequest(w http.ResponseWriter, r *http.Request) {
-	// TODO: this requires a rework of the widget update logic so that rather
-	// than locking the entire page we lock individual widgets
-	w.WriteHeader(http.StatusNotImplemented)
+func (a *application) handleWidgetContentRequest(w http.ResponseWriter, r *http.Request) {
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
 
-	// widgetValue := r.PathValue("widget")
+	widgetValue := r.PathValue("widget")
+	widgetID, err := strconv.ParseUint(widgetValue, 10, 64)
+	if err != nil {
+		a.handleNotFound(w, r)
+		return
+	}
 
-	// widgetID, err := strconv.ParseUint(widgetValue, 10, 64)
-	// if err != nil {
-	// 	a.handleNotFound(w, r)
-	// 	return
-	// }
+	widget, exists := a.widgetByID[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
 
-	// widget, exists := a.widgetByID[widgetID]
+	page, exists := a.widgetToPage[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
 
-	// if !exists {
-	// 	a.handleNotFound(w, r)
-	// 	return
-	// }
+	page.mu.Lock()
+	defer page.mu.Unlock()
 
-	// widget.handleRequest(w, r)
+	widget.update(context.Background())
+
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write([]byte(widget.Render()))
 }
 
 func (a *application) StaticAssetPath(asset string) string {
@@ -516,7 +531,7 @@ func (a *application) server() (func() error, func() error) {
 		mux.HandleFunc("POST /api/set-theme/{key}", a.handleThemeChangeRequest)
 	}
 
-	mux.HandleFunc("/api/widgets/{widget}/{path...}", a.handleWidgetRequest)
+	mux.HandleFunc("GET /api/widgets/{widget}/content/{$}", a.handleWidgetContentRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
