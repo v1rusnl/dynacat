@@ -2990,6 +2990,7 @@ Example:
       token: ${PLEX_TOKEN}
     - url: jellyfin:https://jellyfin.example.com
       token: ${JELLYFIN_API_KEY}
+      allow-insecure: true
   show-thumbnail: true
   show-progress-bar: true
   group-by-host: false
@@ -2999,14 +3000,13 @@ Example:
 | Name | Type | Required | Default |
 | ---- | ---- | -------- | ------- |
 | hosts | array | yes | |
-| small-column | boolean | no | false |
 | play-state | string | no | indicator |
 | show-thumbnail | boolean | no | true |
 | show-paused | boolean | no | false |
 | show-progress-bar | boolean | no | true |
 | show-progress-info | boolean | no | true |
-| time-format | string | no | 24h |
 | group-by-host | boolean | no | false |
+| update-interval | string | no | 30s |
 | episode-title-format | string | no | series |
 
 ##### `hosts`
@@ -3036,11 +3036,6 @@ hosts:
     token: ${EMBY_API_KEY}
 ```
 
-##### `small-column`
-Set to `true` if using the widget in a small-sized column.
-
- 
-
 ##### `play-state`
 How to display the play state. Options:
 - `indicator`: Pulsing dot (green for playing, gray for paused)
@@ -3060,10 +3055,6 @@ When `true`, displays an animated progress bar showing playback progress.
 ##### `show-progress-info`
 When `true`, displays the estimated end time next to the progress bar. Requires `show-progress-bar` to be `true`.
 
-##### `time-format`
-Time format for displaying end times. Options:
-- `24h`: 24-hour format (e.g., "18:30")
-
 ##### `episode-title-format`
 Controls how episode titles are displayed for episodic media. Options:
 - `series`: (default) Shows the series name with season/episode as the main title (for example: "Arcane - S2E4") and the episode name as a smaller subtitle below.
@@ -3078,7 +3069,6 @@ Example:
       token: ${PLEX_TOKEN}
   episode-title-format: series
 ```
-- `12h`: 12-hour format with AM/PM (e.g., "6:30pm")
 
 ##### `group-by-host`
 When `true`, groups sessions by their media server. When `false`, displays all sessions in a unified list.

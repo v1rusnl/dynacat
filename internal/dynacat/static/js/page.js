@@ -1034,40 +1034,69 @@ function formatDurationMs(ms) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-function updatePlayingSessionsForWidget(widget, tickMs) {
+// Wall-clock state for each session, keyed by data-session-key.
+// Survives DOM replacements so the clock never jumps on a widget refresh.
+const playingSessionStates = new Map();
+
+function _playingEstimate(state) {
+    if (!state.isPlaying) return state.anchorOffset;
+    return state.anchorOffset + (Date.now() - state.anchorTime);
+}
+
+function _playingRender(sess, offsetMs, durationMs) {
+    const pct = durationMs > 0 ? Math.min(100, (offsetMs / durationMs) * 100) : 0;
+    const fill = sess.querySelector('.playing-progress-fill');
+    if (fill) fill.style.width = pct + '%';
+    sess.querySelectorAll('.playing-time-pos').forEach(el => {
+        el.textContent = formatDurationMs(offsetMs);
+    });
+}
+
+// Called on every setupPlayingProgressUpdater invocation (initial load + after each widget refresh).
+// Re-anchors the clock only when the server reports a meaningful change.
+function _playingSyncWidget(widget) {
+    const DRIFT_TOLERANCE_MS = 3000;
     const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
-    sessions.forEach(sess => {
-        const duration = Number(sess.dataset.duration);
-        if (!duration || duration <= 0) return;
+    sessions.forEach((sess, idx) => {
+        const duration = Number(sess.dataset.duration || 0);
+        if (!duration) return;
 
-        // maintain current offset in dataset.currentOffset to avoid drifting the original value
-        let current = Number(sess.dataset.currentOffset || sess.dataset.offset || 0);
-        const isPlaying = sess.dataset.playing === 'true' || sess.dataset.playing === '1';
+        const serverOffset = Number(sess.dataset.offset || 0);
+        const isPlaying = sess.dataset.playing === 'true';
+        // Use session-key when available; fall back to widget-id + position index.
+        const key = sess.dataset.sessionKey || (widget.dataset.widgetId + ':' + idx);
 
-        if (isPlaying) {
-            current = current + tickMs;
-            if (current > duration) current = duration;
-        }
-
-        sess.dataset.currentOffset = String(current);
-
-        const percent = Math.min(100, Math.round((current / duration) * 100));
-
-        const fill = sess.querySelector('.playing-progress-fill');
-        if (fill) {
-            fill.style.width = percent + '%';
-        }
-
-        const timeRow = sess.querySelector('.playing-time-row');
-        if (timeRow) {
-            const posElem = timeRow.children[0];
-            const remElem = timeRow.children[1];
-            if (posElem) posElem.textContent = formatDurationMs(current);
-            if (remElem) {
-                const remaining = Math.max(0, duration - current);
-                remElem.textContent = '-' + formatDurationMs(remaining);
+        let state = playingSessionStates.get(key);
+        if (state) {
+            const estimated = _playingEstimate(state);
+            const drift = Math.abs(serverOffset - estimated);
+            const stateChanged = state.isPlaying !== isPlaying;
+            if (stateChanged || drift > DRIFT_TOLERANCE_MS) {
+                // Playback state flipped or we drifted too far — re-anchor to server value.
+                state.anchorOffset = serverOffset;
+                state.anchorTime = Date.now();
+                state.isPlaying = isPlaying;
             }
+            // else: clock is running fine, leave it alone (no jump).
+        } else {
+            state = { anchorOffset: serverOffset, anchorTime: Date.now(), isPlaying };
+            playingSessionStates.set(key, state);
         }
+
+        _playingRender(sess, Math.min(_playingEstimate(state), duration), duration);
+    });
+}
+
+// Called every second by the per-widget interval.
+function _playingTickWidget(widget) {
+    const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
+    sessions.forEach((sess, idx) => {
+        const duration = Number(sess.dataset.duration || 0);
+        if (!duration) return;
+        const key = sess.dataset.sessionKey || (widget.dataset.widgetId + ':' + idx);
+        const state = playingSessionStates.get(key);
+        if (!state) return;
+        _playingRender(sess, Math.min(_playingEstimate(state), duration), duration);
     });
 }
 
@@ -1077,41 +1106,22 @@ function setupPlayingProgressUpdater() {
 
     widgets.forEach(widget => {
         seen.add(widget);
-        const intervalMs = parseInt(widget.dataset.updateInterval, 10) || 1000;
 
-        // If updater already exists, update interval if changed
-        const existing = playingUpdaters.get(widget);
-        if (existing) {
-            if (existing.intervalMs !== intervalMs) {
-                clearPlayingUpdater(widget);
-            } else {
-                // keep existing
-                return;
-            }
-        }
+        // Always sync so that paused/resumed/seeked state is picked up from the latest DOM.
+        _playingSyncWidget(widget);
 
-        // initialize current offsets from server-provided offset
-        const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
-        sessions.forEach(s => {
-            s.dataset.currentOffset = s.dataset.offset || '0';
-        });
+        if (playingUpdaters.has(widget)) return;
 
-        // run an immediate update then schedule repeating updates using widget's interval
-        updatePlayingSessionsForWidget(widget, 0);
-
-        const intervalId = setInterval(() => updatePlayingSessionsForWidget(widget, intervalMs), intervalMs);
-
-        playingUpdaters.set(widget, { intervalId, intervalMs });
+        // First time seeing this widget element — start the 1 s tick.
+        const intervalId = setInterval(() => _playingTickWidget(widget), 1000);
+        playingUpdaters.set(widget, { intervalId });
     });
 
-    // clear updaters for widgets that no longer exist
+    // Tear down intervals for widget elements that are no longer in the DOM.
     Array.from(playingUpdaters.keys()).forEach(widget => {
-        if (!seen.has(widget)) {
-            clearPlayingUpdater(widget);
-        }
+        if (!seen.has(widget)) clearPlayingUpdater(widget);
     });
 
-    // Also ensure thumbnail cropping is applied for current widgets
     setupPlayingThumbnailCropping();
 }
 

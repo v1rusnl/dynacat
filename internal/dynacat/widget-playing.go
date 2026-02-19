@@ -63,15 +63,17 @@ type playingWidget struct {
 	Hosts       []PlayingHostConfig `yaml:"hosts"`
 	SmallColumn bool                `yaml:"small-column"`
 	// `compact` option removed — layouts use the default (non-compact) sizing
-	PlayState          string `yaml:"play-state"`
-	ShowThumbnail      bool   `yaml:"show-thumbnail"`
-	ShowPaused         bool   `yaml:"show-paused"`
-	ShowProgressBar    bool   `yaml:"show-progress-bar"`
-	ShowProgressInfo   bool   `yaml:"show-progress-info"`
-	TimeFormat         string `yaml:"time-format"`
-	GroupByHost        bool   `yaml:"group-by-host"`
-	EpisodeTitleFormat string `yaml:"episode-title-format"`
-	Debug              bool   `yaml:"debug"`
+	PlayState               string `yaml:"play-state"`
+	ShowThumbnail           *bool  `yaml:"show-thumbnail"`
+	ShowPaused              bool   `yaml:"show-paused"`
+	ShowProgressBar         *bool  `yaml:"show-progress-bar"`
+	ShowProgressInfo        *bool  `yaml:"show-progress-info"`
+	GroupByHost             bool   `yaml:"group-by-host"`
+	EpisodeTitleFormat      string `yaml:"episode-title-format"`
+	Debug                   bool   `yaml:"debug"`
+	ShowThumbnailEnabled    bool   `yaml:"-"`
+	ShowProgressBarEnabled  bool   `yaml:"-"`
+	ShowProgressInfoEnabled bool   `yaml:"-"`
 
 	mu             sync.RWMutex              `yaml:"-"`
 	Sessions       []mediaSession            `yaml:"-"`
@@ -79,10 +81,11 @@ type playingWidget struct {
 }
 
 type PlayingHostConfig struct {
-	URL        string `yaml:"url"`
-	Token      string `yaml:"token"`
-	ServerType string `yaml:"-"`
-	BaseURL    string `yaml:"-"`
+	URL           string `yaml:"url"`
+	Token         string `yaml:"token"`
+	AllowInsecure bool   `yaml:"allow-insecure"`
+	ServerType    string `yaml:"-"`
+	BaseURL       string `yaml:"-"`
 }
 
 type mediaSession struct {
@@ -102,7 +105,6 @@ type mediaSession struct {
 	Duration           int64
 	Offset             int64
 	Progress           int
-	EndTime            string
 	RemainingSeconds   int
 	FormattedDuration  string
 	FormattedPosition  string
@@ -119,7 +121,7 @@ func (widget *playingWidget) initialize() error {
 	widget.withTitle("Currently Playing")
 
 	if widget.UpdateInterval == nil {
-		interval := updateIntervalField(5 * time.Second)
+		interval := updateIntervalField(30 * time.Second)
 		widget.UpdateInterval = &interval
 	}
 
@@ -130,31 +132,34 @@ func (widget *playingWidget) initialize() error {
 	if widget.PlayState == "" {
 		widget.PlayState = "indicator"
 	}
-	if widget.TimeFormat == "" {
-		widget.TimeFormat = "24h"
-	}
 	if widget.EpisodeTitleFormat == "" {
 		widget.EpisodeTitleFormat = "series"
 	}
 
-	// Boolean defaults (treat zero value as unspecified)
-	if !widget.ShowThumbnail {
-		widget.ShowThumbnail = true
+	// Boolean defaults — only applied when not explicitly set by the user
+	t := true
+	if widget.ShowThumbnail == nil {
+		widget.ShowThumbnail = &t
 	}
-	if !widget.ShowProgressBar {
-		widget.ShowProgressBar = true
+	if widget.ShowProgressBar == nil {
+		widget.ShowProgressBar = &t
 	}
-	if !widget.ShowProgressInfo {
-		widget.ShowProgressInfo = true
+	if widget.ShowProgressInfo == nil {
+		widget.ShowProgressInfo = &t
 	}
 
 	// Explicit default for grouping
 	widget.GroupByHost = false
 
 	// Ensure progress info is disabled if there's no progress bar
-	if !widget.ShowProgressBar {
-		widget.ShowProgressInfo = false
+	if !*widget.ShowProgressBar {
+		f := false
+		widget.ShowProgressInfo = &f
 	}
+
+	widget.ShowThumbnailEnabled = widget.ShowThumbnail != nil && *widget.ShowThumbnail
+	widget.ShowProgressBarEnabled = widget.ShowProgressBar != nil && *widget.ShowProgressBar
+	widget.ShowProgressInfoEnabled = widget.ShowProgressInfo != nil && *widget.ShowProgressInfo
 
 	// Validate and parse host URLs
 	if len(widget.Hosts) == 0 {
@@ -317,7 +322,8 @@ func (widget *playingWidget) fetchPlexSessions(ctx context.Context, host *Playin
 	req.Header.Set("X-Plex-Token", host.Token)
 	req.Header.Set("Accept", "application/json")
 
-	response, err := decodeJsonFromRequest[plexSessionsResponse](defaultHTTPClient, req)
+	client := ternary(host.AllowInsecure, defaultInsecureHTTPClient, defaultHTTPClient)
+	response, err := decodeJsonFromRequest[plexSessionsResponse](client, req)
 	if err != nil {
 		return nil, err
 	}
@@ -358,7 +364,7 @@ func (widget *playingWidget) fetchPlexSessions(ctx context.Context, host *Playin
 		// Set display title and subtitle based on format preference
 		widget.setDisplayTitles(&session)
 
-		if widget.ShowThumbnail {
+		if *widget.ShowThumbnail {
 			if item.Type == "episode" && item.GrandparentThumb != "" {
 				session.ThumbnailURL = fmt.Sprintf("%s%s?X-Plex-Token=%s",
 					strings.TrimRight(host.BaseURL, "/"),
@@ -398,7 +404,8 @@ func (widget *playingWidget) fetchJellyfinSessions(ctx context.Context, host *Pl
 
 	req.Header.Set("Accept", "application/json")
 
-	response, err := decodeJsonFromRequest[jellyfinEmbySessionsResponse](defaultHTTPClient, req)
+	client := ternary(host.AllowInsecure, defaultInsecureHTTPClient, defaultHTTPClient)
+	response, err := decodeJsonFromRequest[jellyfinEmbySessionsResponse](client, req)
 	if err != nil {
 		if widget.Debug {
 			slog.Error("Jellyfin: failed to decode response", "error", err)
@@ -426,7 +433,8 @@ func (widget *playingWidget) fetchEmbySessions(ctx context.Context, host *Playin
 
 	req.Header.Set("Accept", "application/json")
 
-	response, err := decodeJsonFromRequest[jellyfinEmbySessionsResponse](defaultHTTPClient, req)
+	client := ternary(host.AllowInsecure, defaultInsecureHTTPClient, defaultHTTPClient)
+	response, err := decodeJsonFromRequest[jellyfinEmbySessionsResponse](client, req)
 	if err != nil {
 		return nil, err
 	}
@@ -510,7 +518,7 @@ func (widget *playingWidget) parseJellyfinEmbySessions(host *PlayingHostConfig, 
 		// Set display title and subtitle based on format preference
 		widget.setDisplayTitles(&session)
 
-		if widget.ShowThumbnail && item.NowPlayingItem.Id != "" {
+		if *widget.ShowThumbnail && item.NowPlayingItem.Id != "" {
 			session.ThumbnailURL = fmt.Sprintf("%s/Items/%s/Images/Primary?api_key=%s",
 				strings.TrimRight(host.BaseURL, "/"),
 				item.NowPlayingItem.Id,
@@ -602,24 +610,9 @@ func (widget *playingWidget) calculateProgress(session *mediaSession) {
 
 	session.RemainingSeconds = int(remainingMs / 1000)
 
-	endTime := time.Now().Add(time.Duration(remainingMs) * time.Millisecond)
-	session.EndTime = endTime.Format(widget.timeLayout())
-
 	session.FormattedDuration = formatDuration(session.Duration)
 	session.FormattedPosition = formatDuration(session.Offset)
 	session.FormattedRemaining = formatDuration(remainingMs)
-}
-
-func (widget *playingWidget) timeLayout() string {
-	tf := strings.ToLower(strings.TrimSpace(widget.TimeFormat))
-	switch tf {
-	case "24h":
-		return "15:04"
-	case "12h":
-		return "03:04pm"
-	default:
-		return widget.TimeFormat
-	}
 }
 
 func formatDuration(ms int64) string {
