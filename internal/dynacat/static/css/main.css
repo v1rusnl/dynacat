@@ -25,7 +25,7 @@
     --border-radius: 5px;
     --mobile-navigation-height: 50px;
 
-    --color-primary: hsl(43, 50%, 70%);
+    --color-primary: hsl(278.01, 79.31%, 60.2%);
     --color-positive: var(--color-primary);
     --color-negative: hsl(0, 70%, 70%);
     --color-background: hsl(var(--bghs), var(--bgl));
