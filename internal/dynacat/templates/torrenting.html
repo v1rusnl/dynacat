@@ -1,0 +1,94 @@
+{{ template "widget-base.html" . }}
+
+{{ define "widget-content" }}
+<style>
+    .torrenting-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .torrenting-item {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+
+    .torrenting-title-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        min-width: 0;
+    }
+
+    .torrenting-icon {
+        flex-shrink: 0;
+        font-size: 1rem;
+        color: var(--color-primary);
+        width: 1.2em;
+        text-align: center;
+    }
+
+    .torrenting-name {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        color: var(--color-highlight);
+        font-size: 1.15rem;
+        min-width: 0;
+    }
+
+    .torrenting-bar {
+        height: 4px;
+        background: var(--color-separator);
+        border-radius: 2px;
+        overflow: hidden;
+        margin-top: 4px;
+    }
+
+    .torrenting-fill {
+        height: 100%;
+        background: var(--color-primary);
+        border-radius: 2px;
+    }
+
+    .torrenting-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 1rem;
+        color: var(--color-subtext);
+        margin-top: 2px;
+    }
+
+    .torrenting-empty {
+        color: var(--color-subtext);
+        font-size: 1.1rem;
+    }
+</style>
+
+{{ if eq (len .Torrents) 0 }}
+    <div class="torrenting-empty">No torrents.</div>
+{{ else }}
+<ul class="list collapsible-container torrenting-list" data-collapse-after="{{ .CollapseAfter }}">
+{{ range .Torrents }}
+    {{ if and $.HideCompleted .IsCompleted }}{{ continue }}{{ end }}
+    {{ if and $.HideInactive (not .IsActive) }}{{ continue }}{{ end }}
+    <li class="torrenting-item">
+        <div class="torrenting-title-row">
+            <span class="torrenting-icon">{{ .Icon }}</span>
+            <span class="torrenting-name" title="{{ .Name }}">{{ .ShortName }}</span>
+        </div>
+        {{ if and (not $.HideBar) (not .IsCompleted) }}
+        <div class="torrenting-bar">
+            <div class="torrenting-fill" style="width: {{ .ProgressWidth | safeCSS }}"></div>
+        </div>
+        <div class="torrenting-meta">
+            <span>{{ .FmtProgress }}</span>
+            <span>{{ .FmtETA }}</span>
+        </div>
+        {{ end }}
+    </li>
+{{ end }}
+</ul>
+{{ end }}
+{{ end }}

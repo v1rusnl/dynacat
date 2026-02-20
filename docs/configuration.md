@@ -3087,3 +3087,63 @@ When `true`, groups sessions by their media server. When `false`, displays all s
 
 **Emby:**
 - Requires an API key. Generate one in: ⚙️ (settings icon) → Advanced → API Keys
+
+### Torrenting
+
+Display active torrents from one or more qBittorrent instances.
+
+Example:
+
+```yaml
+- type: torrenting
+  hosts:
+    - url: http://192.168.1.1:8080
+      username: admin
+      password: adminadmin
+```
+
+#### Properties
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| hosts | array | yes | |
+| hide-completed | boolean | no | false |
+| hide-inactive | boolean | no | false |
+| hide-bar | boolean | no | false |
+| collapse-after | number | no | 3 |
+| update-interval | string | no | 30s |
+
+##### `hosts`
+
+An array of qBittorrent instances to connect to.
+
+Properties for each host:
+
+| Name | Type | Required |
+| ---- | ---- | -------- |
+| url | string | yes |
+| username | string | yes |
+| password | string | yes |
+
+Example:
+
+```yaml
+hosts:
+  - url: http://192.168.1.1:8080
+    username: admin
+    password: adminadmin
+  - url: http://192.168.1.2:8080
+    username: admin
+    password: adminadmin
+```
+
+##### `hide-completed`
+When `true`, hides torrents that have finished downloading (progress = 100%).
+
+##### `hide-inactive`
+When `true`, hides torrents that are not actively downloading or uploading.
+
+##### `hide-bar`
+When `true`, hides the progress bar and download stats for incomplete torrents.
+
+##### `collapse-after`
+Number of torrents to show before collapsing the rest behind a "Show more" toggle. Set to `0` to disable collapsing.
