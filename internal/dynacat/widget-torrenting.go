@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type torrentingWidget struct {
 	HideCompleted bool                   `yaml:"hide-completed"`
 	HideInactive  bool                   `yaml:"hide-inactive"`
 	HideBar       bool                   `yaml:"hide-bar"`
+	WrapText      bool                   `yaml:"wrap-text"`
 	CollapseAfter int                    `yaml:"collapse-after"`
 
 	mu       sync.RWMutex
@@ -145,6 +147,16 @@ func (widget *torrentingWidget) update(ctx context.Context) {
 		successCount++
 		allTorrents = append(allTorrents, result.torrents...)
 	}
+
+	sort.SliceStable(allTorrents, func(i, j int) bool {
+		if p, q := torrentDownloadPriority(allTorrents[i]), torrentDownloadPriority(allTorrents[j]); p != q {
+			return p < q
+		}
+		if allTorrents[i].IsCompleted != allTorrents[j].IsCompleted {
+			return allTorrents[j].IsCompleted
+		}
+		return strings.ToLower(allTorrents[i].Name) < strings.ToLower(allTorrents[j].Name)
+	})
 
 	widget.mu.Lock()
 	widget.Torrents = allTorrents
@@ -314,6 +326,20 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 	info.ProgressWidth = fmt.Sprintf("%.1f%%", t.Progress*100)
 
 	return info
+}
+
+func torrentDownloadPriority(info torrentInfo) int {
+	switch info.State {
+	case "downloading", "forcedDL":
+		return 0
+	case "uploading", "forcedUP":
+		return 1
+	default:
+		if info.IsCompleted {
+			return 3
+		}
+		return 2
+	}
 }
 
 func (widget *torrentingWidget) Render() template.HTML {

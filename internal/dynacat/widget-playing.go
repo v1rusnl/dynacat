@@ -111,6 +111,7 @@ type mediaSession struct {
 	FormattedRemaining string
 	DisplayTitle       string
 	DisplaySubtitle    string
+	EpisodeInfo        string
 }
 
 func (widget *playingWidget) initialize() error {
@@ -541,6 +542,7 @@ func (widget *playingWidget) setDisplayTitles(session *mediaSession) {
 	// Set default display titles
 	session.DisplayTitle = session.Title
 	session.DisplaySubtitle = ""
+	session.EpisodeInfo = ""
 
 	// Handle episodes based on format preference
 	if session.MediaType == "episode" {
@@ -548,12 +550,13 @@ func (widget *playingWidget) setDisplayTitles(session *mediaSession) {
 			// New default: Show series name with S2E4 as title
 			if session.ShowTitle != "" {
 				session.DisplayTitle = session.ShowTitle
+				// Build episode info (S1E4 format)
 				if session.Season != "" || session.Episode != "" {
 					if session.Season != "" {
-						session.DisplayTitle += " - S" + session.Season
+						session.EpisodeInfo = "S" + session.Season
 					}
 					if session.Episode != "" {
-						session.DisplayTitle += "E" + session.Episode
+						session.EpisodeInfo += "E" + session.Episode
 					}
 				}
 			}

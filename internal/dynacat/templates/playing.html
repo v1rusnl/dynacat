@@ -120,21 +120,36 @@
         color: var(--color-subtext);
     }
 
+    .playing-title-row {
+        display: flex;
+        align-items: baseline;
+        gap: 0.75rem;
+        min-width: 0;
+    }
+
     .playing-title {
         font-size: 1.45rem;
         font-weight: 500;
-        color: var(--color-primary);
         overflow: hidden;
         text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        min-width: 0;
+    }
+
+    .playing-episode-badge {
+        font-size: 1.05rem;
+        flex-shrink: 0;
         white-space: nowrap;
     }
 
     .playing-subtitle {
         font-size: 1.15rem;
-        color: var(--color-subtext);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        flex: 1;
+        min-width: 0;
     }
 
     .playing-progress-wrapper {
@@ -252,10 +267,15 @@
                                     <span>{{ $session.UserName }}</span>
                                 </div>
 
-                                <div class="playing-title">{{ $session.DisplayTitle }}</div>
+                                <div class="playing-title color-primary">{{ $session.DisplayTitle }}</div>
 
                                 {{ if $session.DisplaySubtitle }}
-                                    <div class="playing-subtitle">{{ $session.DisplaySubtitle }}</div>
+                                    <div class="playing-title-row">
+                                        <div class="playing-subtitle color-subtext">{{ $session.DisplaySubtitle }}</div>
+                                        {{ if $session.EpisodeInfo }}
+                                            <div class="playing-episode-badge color-subtext">{{ $session.EpisodeInfo }}</div>
+                                        {{ end }}
+                                    </div>
                                 {{ end }}
 
                                 {{ if and $.ShowProgressBarEnabled $session.IsPlaying (gt $session.Duration 0) }}
@@ -311,10 +331,15 @@
                     <span>{{ $session.UserName }}</span>
                 </div>
 
-                <div class="playing-title">{{ $session.DisplayTitle }}</div>
+                <div class="playing-title color-primary">{{ $session.DisplayTitle }}</div>
 
                 {{ if $session.DisplaySubtitle }}
-                    <div class="playing-subtitle">{{ $session.DisplaySubtitle }}</div>
+                    <div class="playing-title-row">
+                        <div class="playing-subtitle color-subtext">{{ $session.DisplaySubtitle }}</div>
+                        {{ if $session.EpisodeInfo }}
+                            <div class="playing-episode-badge color-subtext">{{ $session.EpisodeInfo }}</div>
+                        {{ end }}
+                    </div>
                 {{ end }}
 
                 {{ if and $.ShowProgressBarEnabled $session.IsPlaying (gt $session.Duration 0) }}

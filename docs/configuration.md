@@ -3109,6 +3109,7 @@ Example:
 | hide-completed | boolean | no | false |
 | hide-inactive | boolean | no | false |
 | hide-bar | boolean | no | false |
+| wrap-text | boolean | no | false |
 | collapse-after | number | no | 3 |
 | update-interval | string | no | 30s |
 
@@ -3144,6 +3145,9 @@ When `true`, hides torrents that are not actively downloading or uploading.
 
 ##### `hide-bar`
 When `true`, hides the progress bar and download stats for incomplete torrents.
+
+##### `wrap-text`
+When `true`, allows torrent titles to wrap across multiple lines instead of being truncated with ellipsis. This displays the full title of each torrent.
 
 ##### `collapse-after`
 Number of torrents to show before collapsing the rest behind a "Show more" toggle. Set to `0` to disable collapsing.
