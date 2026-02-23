@@ -830,11 +830,176 @@ async function setupPage() {
     }
 }
 
+async function fetchWidgetContent(widgetElement) {
+    const widgetId = widgetElement.dataset.widgetId;
+    if (!widgetId) {
+        return null;
+    }
+
+    try {
+        const response = await fetch(`${pageData.baseURL}/api/widgets/${widgetId}/content/`);
+        if (!response.ok) {
+            throw new Error(`Widget content request failed (${response.status})`);
+        }
+
+        const widgetHtml = await response.text();
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = widgetHtml;
+
+        return tempDiv.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+    } catch (error) {
+        console.error('Failed to fetch widget content:', error);
+        return null;
+    }
+}
+
+async function updateWidget(widgetElement) {
+    setupUserScrollIntentTracking();
+
+    const refreshStartedAt = nowMs();
+    const scrollThreshold = 100;
+    const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
+    const expandedIndices = getExpandedCollapsibleIndices(widgetElement);
+    const newWidget = await fetchWidgetContent(widgetElement);
+
+    if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
+        const oldContent = widgetElement.querySelector('.widget-content');
+        const newContent = newWidget.querySelector('.widget-content');
+
+        if (oldContent && newContent) {
+            updateContentPreservingImages(oldContent, newContent);
+
+            const oldHeader = widgetElement.querySelector('.widget-header');
+            const newHeader = newWidget.querySelector('.widget-header');
+            if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
+                oldHeader.innerHTML = newHeader.innerHTML;
+            }
+
+            const callbacksIndexBefore = contentReadyCallbacks.length;
+
+            setupPopovers();
+            setupCarousels();
+            setupCollapsibleLists();
+            setupCollapsibleGrids();
+            setupGroups();
+            setupMasonries();
+            setupLazyImages();
+            setupTruncatedElementTitles();
+
+            const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
+            for (const cb of newCallbacks) {
+                cb();
+            }
+
+            restoreExpandedCollapsibles(widgetElement, expandedIndices);
+            setupPlayingProgressUpdater();
+            setupPlayingThumbnailCropping();
+            restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
+        }
+    }
+}
+
+function updateContentPreservingImages(oldContent, newContent) {
+    const oldImages = Array.from(oldContent.querySelectorAll('img[loading="lazy"]'));
+    const newImages = Array.from(newContent.querySelectorAll('img[loading="lazy"]'));
+    const imageMap = new Map();
+
+    for (const img of oldImages) {
+        if (!imageMap.has(img.src)) {
+            imageMap.set(img.src, img);
+        }
+    }
+
+    for (const newImg of newImages) {
+        const oldImg = imageMap.get(newImg.src);
+        if (oldImg) {
+            for (const attr of newImg.attributes) {
+                if (attr.name !== 'src' && attr.name !== 'class') {
+                    oldImg.setAttribute(attr.name, attr.value);
+                }
+            }
+            newImg.replaceWith(oldImg);
+        }
+    }
+
+    oldContent.replaceWith(newContent);
+}
+
 function nowMs() {
     return Date.now();
 }
 
+let userScrollIntentTrackingInitialized = false;
+let lastUserScrollIntentAt = 0;
+let pendingScrollRestoreFrameId = null;
 
+function setupUserScrollIntentTracking() {
+    if (userScrollIntentTrackingInitialized) {
+        return;
+    }
+
+    const markUserScrollIntent = (event) => {
+        if (event.type === "keydown") {
+            const key = event.key;
+            if (key !== "ArrowUp" && key !== "ArrowDown" && key !== "PageUp" && key !== "PageDown" && key !== "Home" && key !== "End" && key !== " ") {
+                return;
+            }
+        }
+
+        lastUserScrollIntentAt = nowMs();
+
+        if (pendingScrollRestoreFrameId !== null) {
+            cancelAnimationFrame(pendingScrollRestoreFrameId);
+            pendingScrollRestoreFrameId = null;
+        }
+    };
+
+    window.addEventListener("wheel", markUserScrollIntent, { passive: true });
+    window.addEventListener("touchmove", markUserScrollIntent, { passive: true });
+    window.addEventListener("keydown", markUserScrollIntent, { passive: true });
+
+    userScrollIntentTrackingInitialized = true;
+}
+
+function restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt) {
+    if (!wasAtBottom) {
+        return;
+    }
+
+    const recentScrollThresholdMs = 2000;
+    const shouldSkipRestore = () => {
+        const timeSinceLastScroll = nowMs() - lastUserScrollIntentAt;
+        return timeSinceLastScroll < recentScrollThresholdMs;
+    };
+
+    const restore = () => {
+        if (shouldSkipRestore()) {
+            pendingScrollRestoreFrameId = null;
+            return;
+        }
+
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
+        pendingScrollRestoreFrameId = null;
+    };
+
+    restore();
+
+    if (!shouldSkipRestore()) {
+        pendingScrollRestoreFrameId = requestAnimationFrame(restore);
+    }
+}
+
+function remainingDelayMs(intervalMs, lastRunAt) {
+    if (lastRunAt == null) {
+        return intervalMs;
+    }
+
+    const elapsed = nowMs() - lastRunAt;
+    return elapsed >= intervalMs ? 0 : intervalMs - elapsed;
+}
+
+const widgetPollingStates = new Map();
+let widgetPollingVisibilityListenerInitialized = false;
 
 // Local playing progress updaters keyed by widget element
 const playingUpdaters = new Map();
@@ -862,8 +1027,6 @@ function formatDurationMs(ms) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-// Wall-clock state for each session, keyed by data-session-key.
-// Survives DOM replacements so the clock never jumps on a widget refresh.
 const playingSessionStates = new Map();
 
 function _playingEstimate(state) {
@@ -880,8 +1043,6 @@ function _playingRender(sess, offsetMs, durationMs) {
     });
 }
 
-// Called on every setupPlayingProgressUpdater invocation (initial load + after each widget refresh).
-// Re-anchors the clock only when the server reports a meaningful change.
 function _playingSyncWidget(widget) {
     const DRIFT_TOLERANCE_MS = 3000;
     const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
@@ -891,7 +1052,6 @@ function _playingSyncWidget(widget) {
 
         const serverOffset = Number(sess.dataset.offset || 0);
         const isPlaying = sess.dataset.playing === 'true';
-        // Use session-key when available; fall back to widget-id + position index.
         const key = sess.dataset.sessionKey || (widget.dataset.widgetId + ':' + idx);
 
         let state = playingSessionStates.get(key);
@@ -900,12 +1060,10 @@ function _playingSyncWidget(widget) {
             const drift = Math.abs(serverOffset - estimated);
             const stateChanged = state.isPlaying !== isPlaying;
             if (stateChanged || drift > DRIFT_TOLERANCE_MS) {
-                // Playback state flipped or we drifted too far — re-anchor to server value.
                 state.anchorOffset = serverOffset;
                 state.anchorTime = Date.now();
                 state.isPlaying = isPlaying;
             }
-            // else: clock is running fine, leave it alone (no jump).
         } else {
             state = { anchorOffset: serverOffset, anchorTime: Date.now(), isPlaying };
             playingSessionStates.set(key, state);
@@ -915,7 +1073,6 @@ function _playingSyncWidget(widget) {
     });
 }
 
-// Called every second by the per-widget interval.
 function _playingTickWidget(widget) {
     const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
     sessions.forEach((sess, idx) => {
@@ -934,18 +1091,14 @@ function setupPlayingProgressUpdater() {
 
     widgets.forEach(widget => {
         seen.add(widget);
-
-        // Always sync so that paused/resumed/seeked state is picked up from the latest DOM.
         _playingSyncWidget(widget);
 
         if (playingUpdaters.has(widget)) return;
 
-        // First time seeing this widget element — start the 1 s tick.
         const intervalId = setInterval(() => _playingTickWidget(widget), 1000);
         playingUpdaters.set(widget, { intervalId });
     });
 
-    // Tear down intervals for widget elements that are no longer in the DOM.
     Array.from(playingUpdaters.keys()).forEach(widget => {
         if (!seen.has(widget)) clearPlayingUpdater(widget);
     });
@@ -959,9 +1112,7 @@ function setupPlayingThumbnailCropping() {
     imgs.forEach(img => {
         const container = img.closest('.playing-thumbnail');
         const apply = () => {
-            // Guard in case image has no natural sizes
             if (!img.naturalWidth || !img.naturalHeight) {
-                // keep default (contain)
                 img.classList.remove('playing-crop');
                 if (container) container.classList.remove('playing-portrait');
                 return;
@@ -971,11 +1122,9 @@ function setupPlayingThumbnailCropping() {
                 img.classList.add('playing-crop');
                 if (container) container.classList.remove('playing-portrait');
             } else if (img.naturalHeight > img.naturalWidth) {
-                // portrait: make container taller and remove background
                 img.classList.remove('playing-crop');
                 if (container) container.classList.add('playing-portrait');
             } else {
-                // square
                 img.classList.remove('playing-crop');
                 if (container) container.classList.remove('playing-portrait');
             }
@@ -993,6 +1142,262 @@ function setupPlayingThumbnailCropping() {
     });
 }
 
+function clearWidgetPollingTimeout(state) {
+    if (state.timeoutId != null) {
+        clearTimeout(state.timeoutId);
+        state.timeoutId = null;
+    }
+}
+
+function clearWidgetPollingState(widget) {
+    const state = widgetPollingStates.get(widget);
+    if (!state) {
+        return;
+    }
+
+    clearWidgetPollingTimeout(state);
+    widgetPollingStates.delete(widget);
+}
+
+function scheduleWidgetPolling(state, delayMs) {
+    clearWidgetPollingTimeout(state);
+    state.timeoutId = setTimeout(() => {
+        pollWidget(state);
+    }, Math.max(0, delayMs));
+}
+
+async function pollWidget(state) {
+    if (state.isFetching) {
+        return;
+    }
+
+    const widget = state.widget;
+
+    if (!widget.isConnected) {
+        clearWidgetPollingState(widget);
+        return;
+    }
+
+    if (document.hidden) {
+        return;
+    }
+
+    state.isFetching = true;
+    try {
+        await updateWidget(widget);
+        state.lastRunAt = nowMs();
+    } finally {
+        state.isFetching = false;
+
+        if (!document.hidden && widget.isConnected) {
+            scheduleWidgetPolling(state, state.intervalMs);
+        }
+    }
+}
+
+function registerWidgetPolling(widget, intervalMs) {
+    let state = widgetPollingStates.get(widget);
+
+    if (!state) {
+        state = {
+            widget,
+            intervalMs,
+            timeoutId: null,
+            isFetching: false,
+            lastRunAt: nowMs(),
+        };
+        widgetPollingStates.set(widget, state);
+    } else {
+        state.intervalMs = intervalMs;
+    }
+
+    if (!document.hidden) {
+        scheduleWidgetPolling(state, remainingDelayMs(state.intervalMs, state.lastRunAt));
+    }
+}
+
+function handleWidgetPollingVisibilityChange() {
+    if (document.hidden) {
+        widgetPollingStates.forEach((state) => {
+            clearWidgetPollingTimeout(state);
+        });
+        return;
+    }
+
+    widgetPollingStates.forEach((state, widget) => {
+        if (!widget.isConnected) {
+            clearWidgetPollingState(widget);
+            return;
+        }
+
+        scheduleWidgetPolling(state, remainingDelayMs(state.intervalMs, state.lastRunAt));
+    });
+}
+
+function setupWidgetPolling() {
+    const pollingWidgets = document.querySelectorAll('.widget[data-update-interval]');
+    const seenWidgets = new Set();
+
+    pollingWidgets.forEach(widget => {
+        const intervalMs = parseInt(widget.dataset.updateInterval, 10);
+
+        if (isNaN(intervalMs) || intervalMs <= 0) {
+            console.error('Invalid update-interval for widget:', widget.dataset.updateInterval);
+            return;
+        }
+
+        seenWidgets.add(widget);
+        registerWidgetPolling(widget, intervalMs);
+    });
+
+    widgetPollingStates.forEach((state, widget) => {
+        if (seenWidgets.has(widget)) {
+            return;
+        }
+
+        clearWidgetPollingState(widget);
+    });
+
+    if (!widgetPollingVisibilityListenerInitialized) {
+        document.addEventListener("visibilitychange", handleWidgetPollingVisibilityChange);
+        widgetPollingVisibilityListenerInitialized = true;
+    }
+}
+
+async function applyContentUpdate() {
+    setupUserScrollIntentTracking();
+
+    const refreshStartedAt = nowMs();
+    const scrollThreshold = 100;
+    const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
+    const pageContent = await fetchPageContent(pageData);
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = pageContent;
+
+    const realContainers = Array.from(document.querySelectorAll(".head-widgets, .page-column"));
+    const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
+
+    let anyReplaced = false;
+    const expandedIndicesMap = new Map();
+
+    for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
+        const realWidgets = Array.from(realContainers[i].children);
+        const tempWidgets = Array.from(tempContainers[i].children);
+
+        for (let j = 0; j < Math.min(realWidgets.length, tempWidgets.length); j++) {
+            const realWidget = realWidgets[j];
+            const tempWidget = tempWidgets[j];
+
+            expandedIndicesMap.set(realWidget, getExpandedCollapsibleIndices(realWidget));
+
+            if (realWidget.dataset.updateInterval && realWidget.outerHTML !== tempWidget.outerHTML) {
+                const oldContent = realWidget.querySelector('.widget-content');
+                const newContent = tempWidget.querySelector('.widget-content');
+
+                if (oldContent && newContent) {
+                    updateContentPreservingImages(oldContent, newContent);
+
+                    const oldHeader = realWidget.querySelector('.widget-header');
+                    const newHeader = tempWidget.querySelector('.widget-header');
+                    if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
+                        oldHeader.innerHTML = newHeader.innerHTML;
+                    }
+
+                    anyReplaced = true;
+                }
+            }
+        }
+    }
+
+    if (anyReplaced) {
+        const callbacksIndexBefore = contentReadyCallbacks.length;
+
+        setupPopovers();
+        setupCarousels();
+        setupCollapsibleLists();
+        setupCollapsibleGrids();
+        setupGroups();
+        setupMasonries();
+        setupLazyImages();
+        setupTruncatedElementTitles();
+        setupPlayingThumbnailCropping();
+
+        const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
+        for (const cb of newCallbacks) {
+            cb();
+        }
+
+        for (const [widget, indices] of expandedIndicesMap) {
+            restoreExpandedCollapsibles(widget, indices);
+        }
+
+        setupPlayingProgressUpdater();
+        restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
+    }
+}
+
+let pollingTimeout = null;
+let isPollingFetchInProgress = false;
+let pageLastPollAt = null;
+let pagePollingVisibilityListenerInitialized = false;
+
+function clearPagePollingTimeout() {
+    if (pollingTimeout != null) {
+        clearTimeout(pollingTimeout);
+        pollingTimeout = null;
+    }
+}
+
+function schedulePagePoll(poll, delayMs) {
+    clearPagePollingTimeout();
+    pollingTimeout = setTimeout(poll, Math.max(0, delayMs));
+}
+
+function startPolling() {
+    if (!pageData.updateInterval || pageData.updateInterval <= 0) return;
+
+    const poll = async () => {
+        if (isPollingFetchInProgress) return;
+
+        clearPagePollingTimeout();
+
+        if (document.hidden) {
+            return;
+        }
+
+        isPollingFetchInProgress = true;
+        try {
+            await applyContentUpdate();
+            pageLastPollAt = nowMs();
+        } finally {
+            isPollingFetchInProgress = false;
+            if (!document.hidden) {
+                schedulePagePoll(poll, pageData.updateInterval);
+            }
+        }
+    };
+
+    const handlePagePollingVisibilityChange = () => {
+        if (document.hidden) {
+            clearPagePollingTimeout();
+        } else {
+            if (pageLastPollAt == null) {
+                poll();
+                return;
+            }
+
+            schedulePagePoll(poll, remainingDelayMs(pageData.updateInterval, pageLastPollAt));
+        }
+    };
+
+    if (!pagePollingVisibilityListenerInitialized) {
+        document.addEventListener("visibilitychange", handlePagePollingVisibilityChange);
+        pagePollingVisibilityListenerInitialized = true;
+    }
+
+    poll();
+}
+
 window.dynacatRefreshWidget = function(widgetId) {
     const widget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
     if (widget) htmx.trigger(widget, 'refresh');
@@ -1000,42 +1405,31 @@ window.dynacatRefreshWidget = function(widgetId) {
 
 window.dynacatSetupPopovers = setupPopovers;
 
-setupPage();
-
-// Pause HTMX polls when tab is hidden
 document.body.addEventListener('htmx:beforeRequest', function(event) {
     if (document.hidden) event.preventDefault();
 });
 
-// Save collapsible state before idiomorph morphs a widget.
 document.body.addEventListener('htmx:beforeSwap', function(event) {
     const target = event.detail.target;
     if (!target?.classList?.contains('widget')) return;
     target._expandedCollapsibleIndices = getExpandedCollapsibleIndices(target);
 });
 
-// Restore collapsible state immediately after the swap, in the same synchronous
-// JS task as the morph. The browser only paints between tasks, so it never sees
-// the intermediate collapsed state — no flicker, no scroll jump.
 document.body.addEventListener('htmx:afterSwap', function(event) {
     let target = event.detail.target;
     if (!target?.classList?.contains('widget')) return;
 
-    // Always re-attach toggle buttons after morph (they aren't in server HTML).
     setupCollapsibleLists();
     setupCollapsibleGrids();
 
     let indices = target._expandedCollapsibleIndices;
     if (!indices?.length) return;
 
-    // Disable scroll-anchor to prevent browser from scrolling when widget height changes.
     const htmlElem = document.documentElement;
     const prevAnchor = htmlElem.style.overflowAnchor;
     htmlElem.style.overflowAnchor = 'none';
 
     try {
-        // After outerHTML morph, the target reference may point to a detached old element.
-        // Re-find the widget in the DOM by ID to ensure we operate on the live element.
         const widgetId = target.dataset.widgetId;
         if (widgetId) {
             const liveTarget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
@@ -1051,18 +1445,15 @@ document.body.addEventListener('htmx:afterSwap', function(event) {
     }
 });
 
-// Re-run the remaining widget setup after morph settles.
 document.body.addEventListener('htmx:afterSettle', function(event) {
     let target = event.detail.target;
     if (!target?.classList?.contains('widget')) return;
 
-    // Disable scroll-anchor to prevent browser from scrolling when setup causes layout changes.
     const htmlElem = document.documentElement;
     const prevAnchor = htmlElem.style.overflowAnchor;
     htmlElem.style.overflowAnchor = 'none';
 
     try {
-        // Re-find widget by ID (same reason as in htmx:afterSwap).
         const widgetId = target.dataset.widgetId;
         if (widgetId) {
             const liveTarget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
@@ -1082,4 +1473,9 @@ document.body.addEventListener('htmx:afterSettle', function(event) {
     } finally {
         htmlElem.style.overflowAnchor = prevAnchor;
     }
+});
+
+setupPage().then(() => {
+    startPolling();
+    setupWidgetPolling();
 });
