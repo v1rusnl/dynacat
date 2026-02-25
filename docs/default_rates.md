@@ -7,12 +7,13 @@
 | Hacker News | 5m |
 | Lobsters | 30m |
 | Reddit | 25m |
-| Custom API | 10s |
+| Custom API | 1m |
 | Extension | 5m |
 | Weather | 1h |
 | Monitor | 2m |
 | Releases | 3h |
 | Docker Containers | 2m |
+| Docker Controller | 30s |
 | DNS Stats | 10m |
 | Server Stats | 1ms |
 | Repository | 3h |
@@ -24,4 +25,5 @@
 
 | External Integration | Default Update Interval |
 | --- | ---:|
-| Currently Playing | 5s |
+| Currently Playing | 30s |
+| Torrenting | 30 s |

@@ -124,7 +124,7 @@ func (widget *dockerControllerWidget) initialize() error {
 	}
 
 	if widget.UpdateInterval == nil {
-		interval := updateIntervalField(15 * time.Second)
+		interval := updateIntervalField(30 * time.Second)
 		widget.UpdateInterval = &interval
 	}
 
