@@ -867,7 +867,17 @@ async function updateWidget(widgetElement) {
         const newContent = newWidget.querySelector('.widget-content');
 
         if (oldContent && newContent) {
+            const savedInputs = {};
+            for (const input of oldContent.querySelectorAll('input[id]')) {
+                if (input.value) savedInputs[input.id] = input.value;
+            }
+
             updateContentPreservingImages(oldContent, newContent);
+
+            for (const [id, value] of Object.entries(savedInputs)) {
+                const input = newContent.querySelector('#' + id);
+                if (input) input.value = value;
+            }
 
             const oldHeader = widgetElement.querySelector('.widget-header');
             const newHeader = newWidget.querySelector('.widget-header');
@@ -1398,9 +1408,9 @@ function startPolling() {
     poll();
 }
 
-window.dynacatRefreshWidget = function(widgetId) {
+window.dynacatRefreshWidget = async function(widgetId) {
     const widget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
-    if (widget) htmx.trigger(widget, 'refresh');
+    if (widget) await updateWidget(widget);
 };
 
 window.dynacatSetupPopovers = setupPopovers;
