@@ -77,6 +77,8 @@ func newWidget(widgetType string) (widget, error) {
 		w = &customAPIWidget{}
 	case "docker-containers":
 		w = &dockerContainersWidget{}
+	case "docker-controller":
+		w = &dockerControllerWidget{}
 	case "server-stats":
 		w = &serverStatsWidget{}
 	case "to-do":

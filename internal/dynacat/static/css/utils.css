@@ -284,6 +284,10 @@ details[open] .summary::after {
     animation: collapsibleItemReveal .25s backwards;
 }
 
+.collapsible-container.no-reveal-animation > .collapsible-item {
+    animation: none;
+}
+
 @keyframes collapsibleItemReveal {
     from {
         opacity: 0;

@@ -550,6 +550,26 @@ func (a *application) handleWidgetContentRequest(w http.ResponseWriter, r *http.
 	w.Write([]byte(widget.Render()))
 }
 
+func (a *application) handleWidgetActionRequest(w http.ResponseWriter, r *http.Request) {
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
+
+	widgetID, err := strconv.ParseUint(r.PathValue("widget"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid widget", http.StatusBadRequest)
+		return
+	}
+
+	widget, exists := a.widgetByID[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
+
+	widget.handleRequest(w, r)
+}
+
 func (a *application) StaticAssetPath(asset string) string {
 	return a.Config.Server.BaseURL + "/static/" + staticFSHash + "/" + asset
 }
@@ -615,6 +635,7 @@ func (a *application) server() (func() error, func() error) {
 	}
 
 	mux.HandleFunc("GET /api/widgets/{widget}/content/{$}", a.handleWidgetContentRequest)
+	mux.HandleFunc("POST /api/widgets/{widget}/action/{action...}", a.handleWidgetActionRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

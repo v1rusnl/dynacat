@@ -361,6 +361,7 @@ function restoreExpandedCollapsibles(element, expandedIndices) {
         if (!container) continue;
         const button = container.nextElementSibling;
         if (button && button.classList.contains('expand-toggle-button')) {
+            container.classList.add('no-reveal-animation');
             button.click();
         }
     }
@@ -389,6 +390,7 @@ function attachExpandToggleButton(collapsibleContainer) {
 
         const topBefore = button.getClientRects()[0].top;
 
+        collapsibleContainer.classList.remove("no-reveal-animation");
         collapsibleContainer.classList.remove("container-expanded");
         button.classList.remove("container-expanded");
         textNode.nodeValue = showMoreText;
@@ -855,8 +857,19 @@ async function updateWidget(widgetElement) {
         const newContent = newWidget.querySelector('.widget-content');
 
         if (oldContent && newContent) {
+            // Preserve any user-typed input values across the content swap
+            const savedInputs = {};
+            for (const input of oldContent.querySelectorAll('input[id]')) {
+                if (input.value) savedInputs[input.id] = input.value;
+            }
+
             // Update content while preserving cached images
             updateContentPreservingImages(oldContent, newContent);
+
+            for (const [id, value] of Object.entries(savedInputs)) {
+                const input = newContent.querySelector('#' + id);
+                if (input) input.value = value;
+            }
 
             // Update header if it changed
             const oldHeader = widgetElement.querySelector('.widget-header');
@@ -1421,6 +1434,13 @@ function startPolling() {
 
     poll();
 }
+
+window.dynacatRefreshWidget = async function(widgetId) {
+    const widget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+    if (widget) await updateWidget(widget);
+};
+
+window.dynacatSetupPopovers = setupPopovers;
 
 setupPage().then(() => {
     startPolling();

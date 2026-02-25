@@ -38,4 +38,5 @@
             <p class="break-all">{{ if .Error }}{{ .Error }}{{ else }}No error information provided{{ end }}</p>
         {{- end}}
     </div>
+    {{ block "widget-scripts" . }}{{ end }}
 </div>

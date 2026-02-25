@@ -31,6 +31,7 @@
   - [Monitor](#monitor)
   - [Releases](#releases)
   - [Docker Containers](#docker-containers)
+  - [Docker Controller](#docker-controller)
   - [DNS Stats](#dns-stats)
   - [Server Stats](#server-stats)
   - [Repository](#repository)
@@ -45,6 +46,7 @@
   - [HTML](#html)
 - [External Integrations](#external-integrations)
   - [Currently Playing](#currently-playing)
+  - [Torrenting](#Torrenting)
 ## Preconfigured page
 If you don't want to spend time reading through all the available configuration options and just want something to get you going quickly you can use [this `dynacat.yml` file](dynacat.yml) and make changes to it as you see fit. It will give you a page that looks like the following:
 
@@ -2354,6 +2356,79 @@ Whether to only show running containers. If set to `true` only containers that a
 | dynacat.id | The custom ID of the container. Used to group containers under a single parent. |
 | dynacat.parent | The ID of the parent container. Used to group containers under a single parent. |
 | dynacat.category | The category of the container. Used to filter containers by category. |
+
+### Docker Controller
+
+Display and manage your Docker containers and images interactively. Start, stop, restart, and remove containers; pull and remove images directly from the dashboard.
+
+Example:
+
+```yaml
+- type: docker-controller
+  title: Docker
+  show: both
+  update-interval: 15s
+```
+
+> [!NOTE]
+>
+> The widget requires access to `docker.sock`. If you're running Dynacat inside a container, this can be done by mounting the socket as a volume:
+>
+> ```yaml
+> services:
+>   dynacat:
+>     image: Panonim/dynacat
+>     volumes:
+>       - /var/run/docker.sock:/var/run/docker.sock
+> ```
+
+#### Features
+
+- **Container Management**: Start, stop, restart, or remove containers with a single click
+- **Image Management**: Pull images and remove unused images directly from the dashboard
+- **State Visualization**: Visual indicators show container and image status (running, stopped, error, etc.)
+- **Responsive Design**: Action buttons appear on hover; two-click confirmation for destructive actions
+- **Filtering**: Display containers only, images only, or both
+
+#### Properties
+
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| show | string | no | both |
+| sock-path | string | no | /var/run/docker.sock |
+| format-container-names | boolean | no | false |
+| collapse-after | integer | no | 4 |
+| update-interval | string | no | 15s |
+
+##### `show`
+Controls what to display in the widget. Possible values are:
+- `containers` - Display only containers
+- `images` - Display only images
+- `both` - Display both containers and images (default)
+
+##### `sock-path`
+The path to the Docker socket. This can also be a [remote socket](https://docs.docker.com/engine/daemon/remote-access/) or proxied socket using something like [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
+
+##### `format-container-names`
+When set to `true`, automatically converts container names such as `container_name_1` into `Container Name 1`.
+
+##### `collapse-after`
+The number of containers or images to display before showing a "SHOW MORE" button. Set to `-1` to never collapse.
+
+##### `update-interval`
+How often the widget polls for updates. The value is a string and must be a number followed by one of s (seconds), m (minutes) or h (hours). Default is `15s`.
+
+#### Usage
+
+**Container Actions:**
+- Running containers show **Stop**, **Restart**, and **Remove** buttons
+- Stopped containers show **Start** and **Remove** buttons
+- Click remove button once to enter confirmation mode (icon changes to checkmark), click again to confirm
+- Confirmation automatically cancels after 3 seconds if not confirmed
+
+**Image Actions:**
+- **Pull**: Enter an image name (e.g., `nginx:latest`, `ghcr.io/user/repo:tag`) in the input field and click the download button
+- **Remove**: Click the remove button on an image to delete it (two-click confirmation)
 
 ### DNS Stats
 Display statistics from a self-hosted ad-blocking DNS resolver such as AdGuard Home, Pi-hole, or Technitium.

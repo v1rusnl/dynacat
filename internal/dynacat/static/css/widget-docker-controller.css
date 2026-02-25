@@ -1,0 +1,142 @@
+.widget-type-docker-controller input {
+    background: none;
+    border: 1px solid var(--color-text-subdue);
+    border-radius: var(--border-radius);
+    color: var(--color-text-highlight);
+    font: inherit;
+    font-size: var(--font-size-base);
+    padding: 0.4rem 0.7rem;
+    transition: border-color 0.2s;
+    width: 100%;
+}
+
+.widget-type-docker-controller input:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.widget-type-docker-controller input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.docker-ctrl-section-header {
+    font-size: var(--font-size-h5);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.8rem;
+}
+
+.docker-ctrl-section + .docker-ctrl-section {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--color-separator);
+}
+
+.docker-ctrl-pull {
+    margin-bottom: 1rem;
+}
+
+.docker-ctrl-pull-btn {
+    background: none;
+    border: 1px solid var(--color-text-subdue);
+    border-radius: var(--border-radius);
+    color: var(--color-text-base);
+    cursor: pointer;
+    padding: 0.4rem 1.2rem;
+    flex-shrink: 0;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font: inherit;
+    transition: color 0.2s, border-color 0.2s;
+}
+
+.docker-ctrl-pull-btn:hover {
+    color: var(--color-positive);
+    border-color: var(--color-positive);
+}
+
+.docker-ctrl-pull-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.docker-ctrl-pull-btn svg {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.docker-ctrl-row {
+    padding: 0.5rem 0;
+}
+
+.docker-ctrl-actions {
+    opacity: 0;
+    transition: opacity 0.15s;
+}
+
+.docker-ctrl-row:hover .docker-ctrl-actions,
+.docker-ctrl-row:focus-within .docker-ctrl-actions {
+    opacity: 1;
+}
+
+.docker-ctrl-icon-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--color-text-subdue);
+    padding: 0.3rem;
+    border-radius: var(--border-radius);
+    display: flex;
+    align-items: center;
+    transition: color 0.2s;
+}
+
+.docker-ctrl-icon-btn svg {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.docker-ctrl-icon-btn:hover {
+    color: var(--color-text-highlight);
+}
+
+.docker-ctrl-icon-btn.start:hover {
+    color: var(--color-positive);
+}
+
+.docker-ctrl-icon-btn.stop:hover {
+    color: var(--color-negative);
+}
+
+.docker-ctrl-icon-btn.remove:hover {
+    color: var(--color-negative);
+}
+
+.docker-ctrl-icon-btn.confirm-pending {
+    color: var(--color-negative);
+}
+
+.docker-ctrl-icon-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.docker-ctrl-state-icon {
+    width: 1.6rem;
+    height: 1.6rem;
+    flex-shrink: 0;
+}
+
+.docker-ctrl-pull-spinner {
+    width: 1.4rem;
+    height: 1.4rem;
+    min-width: 1.4rem;
+    border-width: 2px;
+}
+
+.docker-ctrl-pull-error .docker-ctrl-pull-status {
+    color: var(--color-negative);
+}
