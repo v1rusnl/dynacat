@@ -857,7 +857,7 @@ async function updateWidget(widgetElement) {
     setupUserScrollIntentTracking();
 
     const refreshStartedAt = nowMs();
-    const scrollYBefore = window.scrollY;
+    const widgetTopBefore = widgetElement.getBoundingClientRect().top;
     const expandedIndices = getExpandedCollapsibleIndices(widgetElement);
     const newWidget = await fetchWidgetContent(widgetElement);
 
@@ -903,7 +903,14 @@ async function updateWidget(widgetElement) {
             restoreExpandedCollapsibles(widgetElement, expandedIndices);
             setupPlayingProgressUpdater();
             setupPlayingThumbnailCropping();
-            restoreScrollAfterRefresh(scrollYBefore, refreshStartedAt);
+
+            const widgetTopAfter = widgetElement.getBoundingClientRect().top;
+            const topDelta = widgetTopAfter - widgetTopBefore;
+            const userScrolledDuringRefresh = lastUserScrollIntentAt > refreshStartedAt;
+
+            if (!userScrolledDuringRefresh && Math.abs(topDelta) > 1) {
+                window.scrollBy({ top: topDelta, behavior: 'auto' });
+            }
         }
     }
 }
@@ -940,7 +947,6 @@ function nowMs() {
 
 let userScrollIntentTrackingInitialized = false;
 let lastUserScrollIntentAt = 0;
-let pendingScrollRestoreFrameId = null;
 
 function setupUserScrollIntentTracking() {
     if (userScrollIntentTrackingInitialized) {
@@ -956,11 +962,6 @@ function setupUserScrollIntentTracking() {
         }
 
         lastUserScrollIntentAt = nowMs();
-
-        if (pendingScrollRestoreFrameId !== null) {
-            cancelAnimationFrame(pendingScrollRestoreFrameId);
-            pendingScrollRestoreFrameId = null;
-        }
     };
 
     window.addEventListener("wheel", markUserScrollIntent, { passive: true });
@@ -968,32 +969,6 @@ function setupUserScrollIntentTracking() {
     window.addEventListener("keydown", markUserScrollIntent, { passive: true });
 
     userScrollIntentTrackingInitialized = true;
-}
-
-function restoreScrollAfterRefresh(scrollYBefore, refreshStartedAt) {
-    const recentScrollThresholdMs = 2000;
-    const shouldSkipRestore = () => {
-        const timeSinceLastScroll = nowMs() - lastUserScrollIntentAt;
-        return timeSinceLastScroll < recentScrollThresholdMs;
-    };
-
-    const restore = () => {
-        if (shouldSkipRestore()) {
-            pendingScrollRestoreFrameId = null;
-            return;
-        }
-
-        const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-        const targetY = Math.min(scrollYBefore, maxScroll);
-        window.scrollTo({ top: targetY, behavior: 'auto' });
-        pendingScrollRestoreFrameId = null;
-    };
-
-    restore();
-
-    if (!shouldSkipRestore()) {
-        pendingScrollRestoreFrameId = requestAnimationFrame(restore);
-    }
 }
 
 function remainingDelayMs(intervalMs, lastRunAt) {
@@ -1277,6 +1252,11 @@ async function applyContentUpdate() {
     const refreshStartedAt = nowMs();
     const scrollThreshold = 100;
     const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
+    const anchorWidget = Array.from(document.querySelectorAll('.widget')).find(widget => {
+        const rect = widget.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < window.innerHeight;
+    }) || null;
+    const anchorTopBefore = anchorWidget ? anchorWidget.getBoundingClientRect().top : null;
     const pageContent = await fetchPageContent(pageData);
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = pageContent;
@@ -1339,7 +1319,23 @@ async function applyContentUpdate() {
         }
 
         setupPlayingProgressUpdater();
-        restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
+
+        const userScrolledDuringRefresh = lastUserScrollIntentAt > refreshStartedAt;
+
+        if (!userScrolledDuringRefresh) {
+            if (wasAtBottom) {
+                const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                if (Math.abs(window.scrollY - maxScroll) > 1) {
+                    window.scrollTo({ top: maxScroll, behavior: 'auto' });
+                }
+            } else if (anchorWidget && anchorTopBefore != null) {
+                const anchorTopAfter = anchorWidget.getBoundingClientRect().top;
+                const topDelta = anchorTopAfter - anchorTopBefore;
+                if (Math.abs(topDelta) > 1) {
+                    window.scrollBy({ top: topDelta, behavior: 'auto' });
+                }
+            }
+        }
     }
 }
 
