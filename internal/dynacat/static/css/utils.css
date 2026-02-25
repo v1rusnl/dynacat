@@ -23,6 +23,10 @@
     width: 1px;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .list-horizontal-text {
     display: flex;
     list-style: none;

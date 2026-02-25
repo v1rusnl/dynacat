@@ -9,8 +9,8 @@
         <div class="docker-ctrl-section-header color-subdue">Containers</div>
         {{- end }}
         <ul class="list list-with-separator collapsible-container" data-collapse-after="{{ .CollapseAfter }}">
-            {{- range .Containers }}
-            <li class="docker-ctrl-row flex items-center gap-10" data-container-id="{{ .ID }}">
+            {{- range $index, $container := .Containers }}
+            <li class="docker-ctrl-row flex items-center gap-10 {{ if and (ge $.CollapseAfter 0) (ge $index $.CollapseAfter) }}collapsible-item{{ end }}" data-container-id="{{ $container.ID }}">
                 <div class="shrink-0" data-popover-type="text" data-popover-position="above" data-popover-text="{{ .StateText }}" aria-label="{{ .StateText }}">
                     {{ template "docker-ctrl-state-icon" .StateIcon }}
                 </div>
@@ -52,10 +52,9 @@
                     </button>
                 </div>
             </li>
-            {{- else }}
-            <li class="color-subdue">No containers available.</li>
             {{- end }}
         </ul>
+        <div class="color-subdue margin-top-10 docker-ctrl-no-containers {{ if .Containers }}hidden{{ end }}">No containers available.</div>
     </div>
     {{- end }}
 
@@ -74,10 +73,9 @@
                 </svg>
             </button>
         </div>
-        {{- if .Images }}
         <ul class="list list-with-separator collapsible-container" data-collapse-after="{{ .CollapseAfter }}">
-            {{- range .Images }}
-            <li class="docker-ctrl-row flex items-center gap-10">
+            {{- range $index, $image := .Images }}
+            <li class="docker-ctrl-row flex items-center gap-10 {{ if and (ge $.CollapseAfter 0) (ge $index $.CollapseAfter) }}collapsible-item{{ end }}">
                 <div class="min-width-0 grow">
                     {{- if .Tags }}
                     <div class="color-highlight text-truncate">{{ index .Tags 0 }}</div>
@@ -101,9 +99,7 @@
             </li>
             {{- end }}
         </ul>
-        {{- else }}
-        <div class="color-subdue margin-top-10">No images available.</div>
-        {{- end }}
+        <div class="color-subdue margin-top-10 docker-ctrl-no-images {{ if .Images }}hidden{{ end }}">No images available.</div>
     </div>
     {{- end }}
 

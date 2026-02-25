@@ -1,7 +1,7 @@
 (function () {
     const base = (typeof pageData !== 'undefined' && pageData.baseURL) || '';
 
-    // activePulls: widgetId -> [{pullId, image}]
+    // activePulls: widgetId -> [{pullId, image, statusText, isError}]
     const activePulls = new Map();
     // MutationObservers watching widgets for content replacements
     const widgetObservers = new Map();
@@ -26,19 +26,70 @@
         return null;
     }
 
-    function createPullListItem(pullId, image) {
+    function setPullEntryState(entry, pull) {
+        const spinner = entry.querySelector('.docker-ctrl-pull-spinner');
+        const status = entry.querySelector('.docker-ctrl-pull-status');
+        const statusText = pull.statusText || 'Pulling\u2026';
+
+        if (status) status.textContent = statusText;
+
+        if (spinner) {
+            spinner.style.visibility = statusText === 'Pulling\u2026' ? '' : 'hidden';
+        }
+
+        entry.classList.toggle('docker-ctrl-pull-error', !!pull.isError);
+    }
+
+    function createPullListItem(pull) {
         const li = document.createElement('li');
         li.className = 'docker-ctrl-row docker-ctrl-pull-entry flex items-center gap-10';
-        li.dataset.pullId = pullId;
+        li.dataset.pullId = pull.pullId;
         li.innerHTML =
             '<div class="shrink-0">' +
                 '<div class="loading-icon docker-ctrl-pull-spinner" aria-hidden="true"></div>' +
             '</div>' +
             '<div class="min-width-0 grow">' +
-                '<div class="color-highlight text-truncate">' + escapeHtml(image) + '</div>' +
-                '<div class="docker-ctrl-pull-status size-h5 color-subdue">Pulling\u2026</div>' +
+                '<div class="color-highlight text-truncate">' + escapeHtml(pull.image) + '</div>' +
+                '<div class="docker-ctrl-pull-status size-h5 color-subdue"></div>' +
             '</div>';
+        setPullEntryState(li, pull);
         return li;
+    }
+
+    function updateNoImagesState(widgetId) {
+        const widget = document.querySelector('.widget[data-widget-id="' + widgetId + '"]');
+        if (!widget) return;
+        const noImages = widget.querySelector('.docker-ctrl-no-images');
+        const list = getImagesListForWidget(widgetId);
+        if (!noImages || !list) return;
+
+        const hasEntries = list.children.length > 0;
+        noImages.classList.toggle('hidden', hasEntries);
+    }
+
+    function getPull(widgetId, pullId) {
+        const pulls = activePulls.get(widgetId);
+        if (!pulls) return null;
+        return pulls.find(function (pull) { return pull.pullId === pullId; }) || null;
+    }
+
+    function isImagePresentInWidget(widgetId, imageName) {
+        const list = getImagesListForWidget(widgetId);
+        if (!list) return false;
+
+        const expected = String(imageName || '').trim().toLowerCase();
+        if (!expected) return false;
+
+        const rows = list.querySelectorAll('.docker-ctrl-row:not(.docker-ctrl-pull-entry)');
+        for (const row of rows) {
+            const label = row.querySelector('.color-highlight');
+            if (!label) continue;
+            if (label.textContent && label.textContent.trim().toLowerCase() === expected) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     function injectActivePulls(widgetId) {
@@ -47,10 +98,19 @@
         const list = getImagesListForWidget(widgetId);
         if (!list) return;
         for (const pull of pulls) {
-            if (!list.querySelector('[data-pull-id="' + pull.pullId + '"]')) {
-                list.appendChild(createPullListItem(pull.pullId, pull.image));
+            if (isImagePresentInWidget(widgetId, pull.image)) {
+                setTimeout(function () { removePullEntry(widgetId, pull.pullId); }, 100);
+                continue;
+            }
+
+            const existing = list.querySelector('[data-pull-id="' + pull.pullId + '"]');
+            if (!existing) {
+                list.appendChild(createPullListItem(pull));
+            } else {
+                setPullEntryState(existing, pull);
             }
         }
+        updateNoImagesState(widgetId);
     }
 
     // Watch a widget's direct children for replacements (i.e. widget-content swaps)
@@ -83,6 +143,7 @@
             const entry = widget.querySelector('[data-pull-id="' + pullId + '"]');
             if (entry) entry.remove();
         }
+        updateNoImagesState(widgetId);
     }
 
     // Fetch fresh widget content and replace only the row for the given container ID.
@@ -187,24 +248,34 @@
             if (!resp.ok) { setTimeout(function () { pollPullStatus(widgetId, pullId); }, 2000); return; }
             const data = await resp.json();
 
+            const pull = getPull(widgetId, pullId);
+            if (!pull) {
+                removePullEntry(widgetId, pullId);
+                return;
+            }
+
+            if (isImagePresentInWidget(widgetId, pull.image)) {
+                pull.statusText = 'Done';
+                pull.isError = false;
+                const widget = document.querySelector('.widget[data-widget-id="' + widgetId + '"]');
+                const entry = widget && widget.querySelector('[data-pull-id="' + pullId + '"]');
+                if (entry) setPullEntryState(entry, pull);
+                setTimeout(function () { removePullEntry(widgetId, pullId); }, 300);
+                return;
+            }
+
             if (data.done) {
                 const widget = document.querySelector('.widget[data-widget-id="' + widgetId + '"]');
                 const entry = widget && widget.querySelector('[data-pull-id="' + pullId + '"]');
                 if (data.error) {
-                    if (entry) {
-                        const status = entry.querySelector('.docker-ctrl-pull-status');
-                        if (status) status.textContent = 'Failed';
-                        entry.classList.add('docker-ctrl-pull-error');
-                    }
+                    pull.statusText = 'Failed';
+                    pull.isError = true;
+                    if (entry) setPullEntryState(entry, pull);
                     setTimeout(function () { removePullEntry(widgetId, pullId); }, 3000);
                 } else {
-                    // Show a brief done state, then remove — the auto-poll will surface the new image
-                    if (entry) {
-                        const spinner = entry.querySelector('.docker-ctrl-pull-spinner');
-                        if (spinner) spinner.style.visibility = 'hidden';
-                        const status = entry.querySelector('.docker-ctrl-pull-status');
-                        if (status) status.textContent = 'Done';
-                    }
+                    pull.statusText = 'Done';
+                    pull.isError = false;
+                    if (entry) setPullEntryState(entry, pull);
                     setTimeout(function () { removePullEntry(widgetId, pullId); }, 1500);
                 }
                 return;
@@ -233,7 +304,12 @@
             const pullId = data.pullId;
 
             if (!activePulls.has(widgetId)) activePulls.set(widgetId, []);
-            activePulls.get(widgetId).push({ pullId: pullId, image: image });
+            activePulls.get(widgetId).push({
+                pullId: pullId,
+                image: image,
+                statusText: 'Pulling\u2026',
+                isError: false,
+            });
             watchWidget(widgetId);
             injectActivePulls(widgetId);
             pollPullStatus(widgetId, pullId);

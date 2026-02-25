@@ -61,10 +61,10 @@ func (p *dockerActivePull) percent() int {
 
 type dockerControllerWidget struct {
 	widgetBase    `yaml:",inline"`
-	SockPath      string `yaml:"sock-path"`
-	Show          string `yaml:"show"`
-	FormatNames   bool   `yaml:"format-container-names"`
-	CollapseAfter int    `yaml:"collapse-after"`
+	SockPath      string                `yaml:"sock-path"`
+	Show          string                `yaml:"show"`
+	FormatNames   bool                  `yaml:"format-container-names"`
+	CollapseAfter int                   `yaml:"collapse-after"`
 	Containers    []dockerCtrlContainer `yaml:"-"`
 	Images        []dockerCtrlImage     `yaml:"-"`
 	selfID        string
@@ -539,7 +539,11 @@ func dockerCtrlPullImageWithProgress(client *http.Client, image string, pull *do
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
 		var event struct {
-			ID             string `json:"id"`
+			ID          string `json:"id"`
+			Error       string `json:"error"`
+			ErrorDetail struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
 			ProgressDetail struct {
 				Current int64 `json:"current"`
 				Total   int64 `json:"total"`
@@ -547,6 +551,12 @@ func dockerCtrlPullImageWithProgress(client *http.Client, image string, pull *do
 		}
 		if err := json.Unmarshal(scanner.Bytes(), &event); err != nil {
 			continue
+		}
+		if event.Error != "" {
+			return fmt.Errorf("docker pull error: %s", event.Error)
+		}
+		if event.ErrorDetail.Message != "" {
+			return fmt.Errorf("docker pull error: %s", event.ErrorDetail.Message)
 		}
 		if event.ID != "" && event.ProgressDetail.Total > 0 {
 			pull.setLayerProgress(event.ID, event.ProgressDetail.Current, event.ProgressDetail.Total)
