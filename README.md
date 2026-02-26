@@ -3,12 +3,13 @@
 <p align="center">
   <a href="#installation">Install</a> •
   <a href="docs/configuration.md#configuring-dynacat">Configuration</a> •
-  <a href="https://discord.gg/mUqTzrfjFP">Discord</a>
+  <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
+  <a href="https://www.paypal.com/paypalme/imartur">Sponsor</a> 
 </p>
 <p align="center">
   <a href="https://github.com/glanceapp/community-widgets">Glance Community widgets</a> •
   <a href="docs/preconfigured-pages.md">Preconfigured pages</a> •
-  <a href="docs/themes.md">Themes</a>
+  <a href="docs/themes.md">Themes</a> 
 </p>
 
 <p align="center">A glance fork that is focused on dynamic updates<br>and easy app integration without the need of writing your own widget's.</p>
@@ -354,5 +355,7 @@ docker build -t owner/dynacat:latest .
 </details>
 
 <br>
+
+**If you like this project, please consider [sponsoring](https://www.paypal.com/paypalme/imartur).**
 
 > This is a fork of a ['Glance'](https://github.com/glanceapp/glance) dashboard. 
