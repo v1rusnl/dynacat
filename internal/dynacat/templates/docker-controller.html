@@ -75,7 +75,7 @@
         </div>
         <ul class="list list-with-separator collapsible-container" data-collapse-after="{{ .CollapseAfter }}">
             {{- range $index, $image := .Images }}
-            <li class="docker-ctrl-row flex items-center gap-10 {{ if and (ge $.CollapseAfter 0) (ge $index $.CollapseAfter) }}collapsible-item{{ end }}">
+            <li class="docker-ctrl-row flex items-center gap-10 {{ if and (ge $.CollapseAfter 0) (ge $index $.CollapseAfter) }}collapsible-item{{ end }}" data-image-id="{{ $image.ID }}">
                 <div class="min-width-0 grow">
                     {{- if .Tags }}
                     <div class="color-highlight text-truncate">{{ index .Tags 0 }}</div>
@@ -87,7 +87,7 @@
                     {{- end }}
                     <div class="size-h5 color-subdue">{{ .SizeHuman }}</div>
                 </div>
-                <div class="shrink-0">
+                <div class="docker-ctrl-actions flex gap-5 shrink-0">
                     <button class="docker-ctrl-icon-btn remove"
                         onclick="dockerCtrlConfirmRemove(this, {{ $.GetID }}, '{{ .ID }}', 'images')"
                         title="Remove image" aria-label="Remove image">

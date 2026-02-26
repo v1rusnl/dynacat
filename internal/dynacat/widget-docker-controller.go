@@ -313,7 +313,7 @@ func (widget *dockerControllerWidget) handleRequest(w http.ResponseWriter, r *ht
 			return
 		}
 		if err := dockerCtrlRemoveImage(client, id); err != nil {
-			http.Error(w, "remove failed", http.StatusInternalServerError)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
@@ -579,11 +579,18 @@ func dockerCtrlRemoveImage(client *http.Client, id string) error {
 		return err
 	}
 	defer resp.Body.Close()
-	io.Copy(io.Discard, resp.Body) //nolint:errcheck
 
 	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		var dockerErr struct {
+			Message string `json:"message"`
+		}
+		if json.Unmarshal(body, &dockerErr) == nil && dockerErr.Message != "" {
+			return fmt.Errorf("%s", dockerErr.Message)
+		}
 		return fmt.Errorf("docker API returned status %d", resp.StatusCode)
 	}
 
+	io.Copy(io.Discard, resp.Body) //nolint:errcheck
 	return nil
 }

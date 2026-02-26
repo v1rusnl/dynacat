@@ -140,3 +140,14 @@
 .docker-ctrl-pull-error .docker-ctrl-pull-status {
     color: var(--color-negative);
 }
+
+.docker-ctrl-row:has(.docker-ctrl-remove-error) {
+    flex-wrap: wrap;
+}
+
+.docker-ctrl-remove-error {
+    width: 100%;
+    color: var(--color-negative);
+    font-size: var(--font-size-h5);
+    padding-bottom: 0.2rem;
+}

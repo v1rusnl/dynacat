@@ -5,6 +5,8 @@
     const activePulls = new Map();
     // MutationObservers watching widgets for content replacements
     const widgetObservers = new Map();
+    // confirmingItems: "widgetId:type:id" -> {origHTML, origTitle, timeoutId}
+    const confirmingItems = new Map();
 
     function escapeHtml(str) {
         return String(str)
@@ -206,39 +208,102 @@
         await updateContainerRow(widgetId, id, action);
     };
 
+    function applyConfirmVisual(btn) {
+        btn.dataset.confirming = '1';
+        btn.classList.add('confirm-pending');
+        btn.title = 'Click again to confirm removal';
+        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" /></svg>';
+    }
+
+    function clearConfirmVisual(btn, origHTML, origTitle) {
+        btn.disabled = false;
+        delete btn.dataset.confirming;
+        btn.classList.remove('confirm-pending');
+        btn.title = origTitle;
+        btn.innerHTML = origHTML;
+    }
+
+    function showRemoveError(widgetId, type, id, msg) {
+        const widget = document.querySelector('.widget[data-widget-id="' + widgetId + '"]');
+        if (!widget) return;
+        const attr = type === 'containers' ? '[data-container-id="' + id + '"]' : '[data-image-id="' + id + '"]';
+        const row = widget.querySelector(attr);
+        if (!row) return;
+        const existing = row.querySelector('.docker-ctrl-remove-error');
+        if (existing) existing.remove();
+        const err = document.createElement('div');
+        err.className = 'docker-ctrl-remove-error size-h5 color-negative';
+        err.textContent = msg;
+        row.appendChild(err);
+        setTimeout(function () { err.remove(); }, 5000);
+    }
+
+    function findRemoveBtn(widgetId, type, id) {
+        const widget = document.querySelector('.widget[data-widget-id="' + widgetId + '"]');
+        if (!widget) return null;
+        const attr = type === 'containers' ? '[data-container-id="' + id + '"]' : '[data-image-id="' + id + '"]';
+        const row = widget.querySelector(attr);
+        return row ? row.querySelector('.docker-ctrl-icon-btn.remove') : null;
+    }
+
+    // After a widget morph, re-apply confirming visuals to any buttons that were in confirm state.
+    document.addEventListener('htmx:afterSettle', function (event) {
+        const target = event.detail.target;
+        if (!target?.classList?.contains('widget')) return;
+        const widgetId = target.dataset.widgetId;
+        if (!widgetId) return;
+        for (const [key, state] of confirmingItems) {
+            const [wid, type, id] = key.split(':');
+            if (wid !== widgetId) continue;
+            const btn = findRemoveBtn(widgetId, type, id);
+            if (btn) applyConfirmVisual(btn);
+        }
+    });
+
     window.dockerCtrlConfirmRemove = function (btn, widgetId, id, type) {
-        if (btn.dataset.confirming) {
+        const key = widgetId + ':' + type + ':' + id;
+
+        if (confirmingItems.has(key)) {
+            // Second click — perform the removal
+            const state = confirmingItems.get(key);
+            clearTimeout(state.timeoutId);
+            confirmingItems.delete(key);
             btn.disabled = true;
             const actionPath = type === 'containers'
                 ? 'containers/' + id + '/remove'
                 : 'images/' + id + '/remove';
             fetch(base + '/api/widgets/' + widgetId + '/action/' + actionPath, { method: 'POST' })
-                .then(function () {
+                .then(function (resp) {
+                    if (!resp.ok) {
+                        clearConfirmVisual(btn, state.origHTML, state.origTitle);
+                        return resp.text().then(function (msg) {
+                            showRemoveError(widgetId, type, id, msg.trim() || 'Remove failed');
+                        });
+                    }
                     if (type === 'containers') {
                         updateContainerRow(widgetId, id, 'remove');
                     } else {
                         window.dynacatRefreshWidget && window.dynacatRefreshWidget(widgetId);
                     }
                 })
-                .catch(function (e) { console.error('docker-ctrl: remove error', e); });
+                .catch(function (e) {
+                    clearConfirmVisual(btn, state.origHTML, state.origTitle);
+                    console.error('docker-ctrl: remove error', e);
+                });
             return;
         }
 
         const origHTML = btn.innerHTML;
         const origTitle = btn.title;
-        btn.dataset.confirming = '1';
-        btn.classList.add('confirm-pending');
-        btn.title = 'Click again to confirm removal';
-        btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M19.916 4.626a.75.75 0 0 1 .208 1.04l-9 13.5a.75.75 0 0 1-1.154.114l-6-6a.75.75 0 0 1 1.06-1.06l5.353 5.353 8.493-12.74a.75.75 0 0 1 1.04-.207Z" clip-rule="evenodd" /></svg>';
+        applyConfirmVisual(btn);
 
-        setTimeout(function () {
-            if (btn.dataset.confirming) {
-                delete btn.dataset.confirming;
-                btn.classList.remove('confirm-pending');
-                btn.title = origTitle;
-                btn.innerHTML = origHTML;
-            }
+        const timeoutId = setTimeout(function () {
+            confirmingItems.delete(key);
+            const freshBtn = findRemoveBtn(widgetId, type, id);
+            if (freshBtn) clearConfirmVisual(freshBtn, origHTML, origTitle);
         }, 3000);
+
+        confirmingItems.set(key, { origHTML, origTitle, timeoutId });
     };
 
     async function pollPullStatus(widgetId, pullId) {

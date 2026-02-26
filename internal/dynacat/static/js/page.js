@@ -1009,6 +1009,10 @@ document.body.addEventListener('htmx:afterSwap', function(event) {
     let target = event.detail.target;
     if (!target?.classList?.contains('widget')) return;
 
+    // Always re-attach toggle buttons after morph (they aren't in server HTML).
+    setupCollapsibleLists();
+    setupCollapsibleGrids();
+
     let indices = target._expandedCollapsibleIndices;
     if (!indices?.length) return;
 
@@ -1029,10 +1033,6 @@ document.body.addEventListener('htmx:afterSwap', function(event) {
             }
         }
 
-        // Re-attach toggle buttons (idiomorph removed them — they aren't in server HTML)
-        // then immediately restore the expanded state before any paint.
-        setupCollapsibleLists();
-        setupCollapsibleGrids();
         restoreExpandedCollapsibles(target, indices);
     } finally {
         htmlElem.style.overflowAnchor = prevAnchor;
