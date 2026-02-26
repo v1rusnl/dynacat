@@ -30,8 +30,10 @@
     {{ if .App.Config.Theme.CustomCSSFile }}<link rel="stylesheet" href="{{ .App.Config.Theme.CustomCSSFile }}?v={{ .App.CreatedAt.Unix }}">{{ end }}
     {{ block "document-head-after" . }}{{ end }}
     {{ if .App.Config.Document.Head }}{{ .App.Config.Document.Head }}{{ end }}
+    <script src='{{ .App.StaticAssetPath "js/htmx.min.js" }}'></script>
+    <script src='{{ .App.StaticAssetPath "js/idiomorph-ext.js" }}'></script>
 </head>
-<body>
+<body hx-ext="morph">
 {{ template "document-body" . }}
 </body>
 </html>

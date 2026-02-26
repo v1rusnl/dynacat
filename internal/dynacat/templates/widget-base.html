@@ -1,4 +1,13 @@
-<div class="widget widget-type-{{ .GetType }}{{ if .CSSClass }} {{ .CSSClass }}{{ end }}" data-widget-id="{{ .GetID }}"{{ if .UpdateInterval }} data-update-interval="{{ .UpdateInterval.Milliseconds }}"{{ end }}{{ block "widget-data-attrs" . }}{{ end }}>
+<div class="widget widget-type-{{ .GetType }}{{ if .CSSClass }} {{ .CSSClass }}{{ end }}"
+     data-widget-id="{{ .GetID }}"
+     {{ if .UpdateInterval }}
+     data-update-interval="{{ .UpdateInterval.Milliseconds }}"
+     hx-get="{{ .GetBaseURL }}/api/widgets/{{ .GetID }}/content/"
+     hx-trigger="every {{ .UpdateInterval.Milliseconds }}ms, refresh"
+     hx-swap="morph:outerHTML"
+     hx-target="this"
+     {{ end }}
+     {{ block "widget-data-attrs" . }}{{ end }}>
     {{- if not .HideHeader }}
     <div class="widget-header">
         {{- if ne "" .TitleURL }}

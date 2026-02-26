@@ -784,6 +784,7 @@ async function setupPage() {
     const pageContent = await fetchPageContent(pageData);
 
     pageContentElement.innerHTML = pageContent;
+    htmx.process(pageContentElement);
 
     try {
         setupPopovers();
@@ -817,173 +818,11 @@ async function setupPage() {
     }
 }
 
-async function fetchWidgetContent(widgetElement) {
-    const widgetId = widgetElement.dataset.widgetId;
-    if (!widgetId) {
-        return null;
-    }
-
-    try {
-        const response = await fetch(`${pageData.baseURL}/api/widgets/${widgetId}/content/`);
-        if (!response.ok) {
-            throw new Error(`Widget content request failed (${response.status})`);
-        }
-
-        const widgetHtml = await response.text();
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = widgetHtml;
-
-        return tempDiv.querySelector(`.widget[data-widget-id="${widgetId}"]`);
-    } catch (error) {
-        console.error('Failed to fetch widget content:', error);
-        return null;
-    }
-}
-
-async function updateWidget(widgetElement) {
-    setupUserScrollIntentTracking();
-
-    const refreshStartedAt = nowMs();
-    const widgetTopBefore = widgetElement.getBoundingClientRect().top;
-
-    const expandedIndices = getExpandedCollapsibleIndices(widgetElement);
-
-    const newWidget = await fetchWidgetContent(widgetElement);
-
-    if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
-        const oldContent = widgetElement.querySelector('.widget-content');
-        const newContent = newWidget.querySelector('.widget-content');
-
-        if (oldContent && newContent) {
-            // Preserve any user-typed input values across the content swap
-            const savedInputs = {};
-            for (const input of oldContent.querySelectorAll('input[id]')) {
-                if (input.value) savedInputs[input.id] = input.value;
-            }
-
-            // Update content while preserving cached images
-            updateContentPreservingImages(oldContent, newContent);
-
-            for (const [id, value] of Object.entries(savedInputs)) {
-                const input = newContent.querySelector('#' + id);
-                if (input) input.value = value;
-            }
-
-            // Update header if it changed
-            const oldHeader = widgetElement.querySelector('.widget-header');
-            const newHeader = newWidget.querySelector('.widget-header');
-            if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
-                oldHeader.innerHTML = newHeader.innerHTML;
-            }
-
-            const callbacksIndexBefore = contentReadyCallbacks.length;
-
-            setupPopovers();
-            setupCarousels();
-            setupCollapsibleLists();
-            setupCollapsibleGrids();
-            setupGroups();
-            setupMasonries();
-            setupLazyImages();
-            setupTruncatedElementTitles();
-
-            const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
-            for (const cb of newCallbacks) {
-                cb();
-            }
-
-            restoreExpandedCollapsibles(widgetElement, expandedIndices);
-
-            // Update any local playing progress updaters and thumbnail cropping after content changes
-            setupPlayingProgressUpdater();
-            setupPlayingThumbnailCropping();
-
-            const widgetTopAfter = widgetElement.getBoundingClientRect().top;
-            const topDelta = widgetTopAfter - widgetTopBefore;
-
-            const userScrolledDuringRefresh = lastUserScrollIntentAt > refreshStartedAt;
-
-            if (!userScrolledDuringRefresh && Math.abs(topDelta) > 1) {
-                window.scrollBy({ top: topDelta, behavior: 'auto' });
-            }
-        }
-    }
-}
-
-function updateContentPreservingImages(oldContent, newContent) {
-    const oldImages = Array.from(oldContent.querySelectorAll('img[loading="lazy"]'));
-    const newImages = Array.from(newContent.querySelectorAll('img[loading="lazy"]'));
-
-    // Create a map of image src to the actual loaded old image elements
-    const imageMap = new Map();
-    for (const img of oldImages) {
-        if (!imageMap.has(img.src)) {
-            imageMap.set(img.src, img);
-        }
-    }
-
-    // Move actual old image elements into newContent to preserve in-memory cached state.
-    // Cloning and re-inserting via innerHTML creates new <img> DOM elements which
-    // causes the browser to refetch or re-validate images, wasting bandwidth.
-    for (const newImg of newImages) {
-        const oldImg = imageMap.get(newImg.src);
-        if (oldImg) {
-            // Copy over any new attributes except src and class (preserve old img's loaded state)
-            for (const attr of newImg.attributes) {
-                if (attr.name !== 'src' && attr.name !== 'class') {
-                    oldImg.setAttribute(attr.name, attr.value);
-                }
-            }
-            newImg.replaceWith(oldImg);
-        }
-    }
-
-    // Swap the content element in the DOM directly instead of via innerHTML string
-    // round-trip, which would create new DOM elements and lose the cached image state.
-    oldContent.replaceWith(newContent);
-}
-
 function nowMs() {
     return Date.now();
 }
 
-let userScrollIntentTrackingInitialized = false;
-let lastUserScrollIntentAt = 0;
 
-function setupUserScrollIntentTracking() {
-    if (userScrollIntentTrackingInitialized) {
-        return;
-    }
-
-    const markUserScrollIntent = (event) => {
-        if (event.type === "keydown") {
-            const key = event.key;
-            if (key !== "ArrowUp" && key !== "ArrowDown" && key !== "PageUp" && key !== "PageDown" && key !== "Home" && key !== "End" && key !== " ") {
-                return;
-            }
-        }
-
-        lastUserScrollIntentAt = nowMs();
-    };
-
-    window.addEventListener("wheel", markUserScrollIntent, { passive: true });
-    window.addEventListener("touchmove", markUserScrollIntent, { passive: true });
-    window.addEventListener("keydown", markUserScrollIntent, { passive: true });
-
-    userScrollIntentTrackingInitialized = true;
-}
-
-function remainingDelayMs(intervalMs, lastRunAt) {
-    if (lastRunAt == null) {
-        return intervalMs;
-    }
-
-    const elapsed = nowMs() - lastRunAt;
-    return elapsed >= intervalMs ? 0 : intervalMs - elapsed;
-}
-
-const widgetPollingStates = new Map();
-let widgetPollingVisibilityListenerInitialized = false;
 
 // Local playing progress updaters keyed by widget element
 const playingUpdaters = new Map();
@@ -1142,294 +981,93 @@ function setupPlayingThumbnailCropping() {
     });
 }
 
-function clearWidgetPollingTimeout(state) {
-    if (state.timeoutId != null) {
-        clearTimeout(state.timeoutId);
-        state.timeoutId = null;
-    }
-}
-
-function clearWidgetPollingState(widget) {
-    const state = widgetPollingStates.get(widget);
-    if (!state) {
-        return;
-    }
-
-    clearWidgetPollingTimeout(state);
-    widgetPollingStates.delete(widget);
-}
-
-function scheduleWidgetPolling(state, delayMs) {
-    clearWidgetPollingTimeout(state);
-    state.timeoutId = setTimeout(() => {
-        pollWidget(state);
-    }, Math.max(0, delayMs));
-}
-
-async function pollWidget(state) {
-    if (state.isFetching) {
-        return;
-    }
-
-    const widget = state.widget;
-
-    if (!widget.isConnected) {
-        clearWidgetPollingState(widget);
-        return;
-    }
-
-    if (document.hidden) {
-        return;
-    }
-
-    state.isFetching = true;
-    try {
-        await updateWidget(widget);
-        state.lastRunAt = nowMs();
-    } finally {
-        state.isFetching = false;
-
-        if (!document.hidden && widget.isConnected) {
-            scheduleWidgetPolling(state, state.intervalMs);
-        }
-    }
-}
-
-function registerWidgetPolling(widget, intervalMs) {
-    let state = widgetPollingStates.get(widget);
-
-    if (!state) {
-        state = {
-            widget,
-            intervalMs,
-            timeoutId: null,
-            isFetching: false,
-            lastRunAt: nowMs(),
-        };
-        widgetPollingStates.set(widget, state);
-    } else {
-        state.intervalMs = intervalMs;
-    }
-
-    if (!document.hidden) {
-        scheduleWidgetPolling(state, remainingDelayMs(state.intervalMs, state.lastRunAt));
-    }
-}
-
-function handleWidgetPollingVisibilityChange() {
-    if (document.hidden) {
-        widgetPollingStates.forEach((state) => {
-            clearWidgetPollingTimeout(state);
-        });
-        return;
-    }
-
-    widgetPollingStates.forEach((state, widget) => {
-        if (!widget.isConnected) {
-            clearWidgetPollingState(widget);
-            return;
-        }
-
-        scheduleWidgetPolling(state, remainingDelayMs(state.intervalMs, state.lastRunAt));
-    });
-}
-
-function setupWidgetPolling() {
-    const pollingWidgets = document.querySelectorAll('.widget[data-update-interval]');
-    const seenWidgets = new Set();
-
-    pollingWidgets.forEach(widget => {
-        const intervalMs = parseInt(widget.dataset.updateInterval, 10);
-
-        if (isNaN(intervalMs) || intervalMs <= 0) {
-            console.error('Invalid update-interval for widget:', widget.dataset.updateInterval);
-            return;
-        }
-
-        seenWidgets.add(widget);
-        registerWidgetPolling(widget, intervalMs);
-    });
-
-    widgetPollingStates.forEach((state, widget) => {
-        if (seenWidgets.has(widget)) {
-            return;
-        }
-
-        clearWidgetPollingState(widget);
-    });
-
-    if (!widgetPollingVisibilityListenerInitialized) {
-        document.addEventListener("visibilitychange", handleWidgetPollingVisibilityChange);
-        widgetPollingVisibilityListenerInitialized = true;
-    }
-}
-
-async function applyContentUpdate() {
-    setupUserScrollIntentTracking();
-
-    const refreshStartedAt = nowMs();
-    const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
-    const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
-    const anchorWidget = Array.from(document.querySelectorAll('.widget')).find(widget => {
-        const rect = widget.getBoundingClientRect();
-        return rect.bottom > 0 && rect.top < window.innerHeight;
-    }) || null;
-    const anchorTopBefore = anchorWidget ? anchorWidget.getBoundingClientRect().top : null;
-
-    const pageContent = await fetchPageContent(pageData);
-    const tempDiv = document.createElement("div");
-    tempDiv.innerHTML = pageContent;
-
-    const realContainers = Array.from(document.querySelectorAll(".head-widgets, .page-column"));
-    const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
-
-    let anyReplaced = false;
-    const expandedIndicesMap = new Map();
-
-    for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
-        const realWidgets = Array.from(realContainers[i].children);
-        const tempWidgets = Array.from(tempContainers[i].children);
-
-        for (let j = 0; j < Math.min(realWidgets.length, tempWidgets.length); j++) {
-            const realWidget = realWidgets[j];
-            const tempWidget = tempWidgets[j];
-
-            expandedIndicesMap.set(realWidget, getExpandedCollapsibleIndices(realWidget));
-
-            if (realWidget.dataset.updateInterval && realWidget.outerHTML !== tempWidget.outerHTML) {
-                const oldContent = realWidget.querySelector('.widget-content');
-                const newContent = tempWidget.querySelector('.widget-content');
-
-                if (oldContent && newContent) {
-                    // Update content while preserving cached images
-                    updateContentPreservingImages(oldContent, newContent);
-
-                    // Update header if it changed
-                    const oldHeader = realWidget.querySelector('.widget-header');
-                    const newHeader = tempWidget.querySelector('.widget-header');
-                    if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
-                        oldHeader.innerHTML = newHeader.innerHTML;
-                    }
-
-                    anyReplaced = true;
-                }
-            }
-        }
-    }
-
-    if (anyReplaced) {
-        const callbacksIndexBefore = contentReadyCallbacks.length;
-
-        setupPopovers();
-        setupCarousels();
-        setupCollapsibleLists();
-        setupCollapsibleGrids();
-        setupGroups();
-        setupMasonries();
-        setupLazyImages();
-        setupTruncatedElementTitles();
-        setupPlayingThumbnailCropping();
-
-        const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
-        for (const cb of newCallbacks) {
-            cb();
-        }
-
-        for (const [widget, indices] of expandedIndicesMap) {
-            restoreExpandedCollapsibles(widget, indices);
-        }
-
-        setupPlayingProgressUpdater();
-
-        const userScrolledDuringRefresh = lastUserScrollIntentAt > refreshStartedAt;
-
-        if (!userScrolledDuringRefresh) {
-            if (wasAtBottom) {
-                const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-                if (Math.abs(window.scrollY - maxScroll) > 1) {
-                    window.scrollTo({ top: maxScroll, behavior: 'auto' });
-                }
-            } else if (anchorWidget && anchorTopBefore != null) {
-                const anchorTopAfter = anchorWidget.getBoundingClientRect().top;
-                const topDelta = anchorTopAfter - anchorTopBefore;
-                if (Math.abs(topDelta) > 1) {
-                    window.scrollBy({ top: topDelta, behavior: 'auto' });
-                }
-            }
-        }
-    }
-}
-
-let pollingTimeout = null;
-let isPollingFetchInProgress = false;
-let pageLastPollAt = null;
-let pagePollingVisibilityListenerInitialized = false;
-
-function clearPagePollingTimeout() {
-    if (pollingTimeout != null) {
-        clearTimeout(pollingTimeout);
-        pollingTimeout = null;
-    }
-}
-
-function schedulePagePoll(poll, delayMs) {
-    clearPagePollingTimeout();
-    pollingTimeout = setTimeout(poll, Math.max(0, delayMs));
-}
-
-function startPolling() {
-    if (!pageData.updateInterval || pageData.updateInterval <= 0) return;
-
-    const poll = async () => {
-        if (isPollingFetchInProgress) return;
-
-        clearPagePollingTimeout();
-
-        if (document.hidden) {
-            return;
-        }
-
-        isPollingFetchInProgress = true;
-        try {
-            await applyContentUpdate();
-            pageLastPollAt = nowMs();
-        } finally {
-            isPollingFetchInProgress = false;
-            if (!document.hidden) {
-                schedulePagePoll(poll, pageData.updateInterval);
-            }
-        }
-    };
-
-    const handlePagePollingVisibilityChange = () => {
-        if (document.hidden) {
-            clearPagePollingTimeout();
-        } else {
-            if (pageLastPollAt == null) {
-                poll();
-                return;
-            }
-
-            schedulePagePoll(poll, remainingDelayMs(pageData.updateInterval, pageLastPollAt));
-        }
-    };
-
-    if (!pagePollingVisibilityListenerInitialized) {
-        document.addEventListener("visibilitychange", handlePagePollingVisibilityChange);
-        pagePollingVisibilityListenerInitialized = true;
-    }
-
-    poll();
-}
-
-window.dynacatRefreshWidget = async function(widgetId) {
+window.dynacatRefreshWidget = function(widgetId) {
     const widget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
-    if (widget) await updateWidget(widget);
+    if (widget) htmx.trigger(widget, 'refresh');
 };
 
 window.dynacatSetupPopovers = setupPopovers;
 
-setupPage().then(() => {
-    startPolling();
-    setupWidgetPolling();
+setupPage();
+
+// Pause HTMX polls when tab is hidden
+document.body.addEventListener('htmx:beforeRequest', function(event) {
+    if (document.hidden) event.preventDefault();
+});
+
+// Save collapsible state before idiomorph morphs a widget.
+document.body.addEventListener('htmx:beforeSwap', function(event) {
+    const target = event.detail.target;
+    if (!target?.classList?.contains('widget')) return;
+    target._expandedCollapsibleIndices = getExpandedCollapsibleIndices(target);
+});
+
+// Restore collapsible state immediately after the swap, in the same synchronous
+// JS task as the morph. The browser only paints between tasks, so it never sees
+// the intermediate collapsed state — no flicker, no scroll jump.
+document.body.addEventListener('htmx:afterSwap', function(event) {
+    let target = event.detail.target;
+    if (!target?.classList?.contains('widget')) return;
+
+    let indices = target._expandedCollapsibleIndices;
+    if (!indices?.length) return;
+
+    // Disable scroll-anchor to prevent browser from scrolling when widget height changes.
+    const htmlElem = document.documentElement;
+    const prevAnchor = htmlElem.style.overflowAnchor;
+    htmlElem.style.overflowAnchor = 'none';
+
+    try {
+        // After outerHTML morph, the target reference may point to a detached old element.
+        // Re-find the widget in the DOM by ID to ensure we operate on the live element.
+        const widgetId = target.dataset.widgetId;
+        if (widgetId) {
+            const liveTarget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+            if (liveTarget) {
+                target = liveTarget;
+                target._expandedCollapsibleIndices = indices;
+            }
+        }
+
+        // Re-attach toggle buttons (idiomorph removed them — they aren't in server HTML)
+        // then immediately restore the expanded state before any paint.
+        setupCollapsibleLists();
+        setupCollapsibleGrids();
+        restoreExpandedCollapsibles(target, indices);
+    } finally {
+        htmlElem.style.overflowAnchor = prevAnchor;
+    }
+});
+
+// Re-run the remaining widget setup after morph settles.
+document.body.addEventListener('htmx:afterSettle', function(event) {
+    let target = event.detail.target;
+    if (!target?.classList?.contains('widget')) return;
+
+    // Disable scroll-anchor to prevent browser from scrolling when setup causes layout changes.
+    const htmlElem = document.documentElement;
+    const prevAnchor = htmlElem.style.overflowAnchor;
+    htmlElem.style.overflowAnchor = 'none';
+
+    try {
+        // Re-find widget by ID (same reason as in htmx:afterSwap).
+        const widgetId = target.dataset.widgetId;
+        if (widgetId) {
+            const liveTarget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+            if (liveTarget) target = liveTarget;
+        }
+
+        setupPopovers();
+        setupCarousels();
+        setupGroups();
+        setupMasonries();
+        setupLazyImages();
+        setupTruncatedElementTitles();
+        setupPlayingProgressUpdater();
+        setupPlayingThumbnailCropping();
+
+        delete target._expandedCollapsibleIndices;
+    } finally {
+        htmlElem.style.overflowAnchor = prevAnchor;
+    }
 });

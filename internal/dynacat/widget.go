@@ -176,6 +176,7 @@ type widgetBase struct {
 type widgetProviders struct {
 	assetResolver func(string) string
 	imageCache    *imageCache
+	baseURL       string
 }
 
 func (w *widgetBase) requiresUpdate(now *time.Time) bool {
@@ -220,6 +221,13 @@ func (w *widgetBase) GetType() string {
 
 func (w *widgetBase) setProviders(providers *widgetProviders) {
 	w.Providers = providers
+}
+
+func (w *widgetBase) GetBaseURL() string {
+	if w.Providers == nil {
+		return ""
+	}
+	return w.Providers.baseURL
 }
 
 func (w *widgetBase) renderTemplate(data any, t *template.Template) template.HTML {

@@ -174,6 +174,7 @@ func newApplication(c *config) (*application, error) {
 	providers := &widgetProviders{
 		assetResolver: app.StaticAssetPath,
 		imageCache:    newImageCache(config.Server.BaseURL, config.Server.CacheDir),
+		baseURL:       config.Server.BaseURL,
 	}
 
 	for p := range config.Pages {
