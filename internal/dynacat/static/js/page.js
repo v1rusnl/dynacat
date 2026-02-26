@@ -1421,7 +1421,7 @@ document.body.addEventListener('htmx:beforeSwap', function(event) {
 document.body.addEventListener('htmx:afterSwap', function(event) {
     let target = event.detail.target;
     if (!target?.classList?.contains('widget')) return;
-
+    // Always re-attach toggle buttons after morph (they aren't in server HTML).
     setupCollapsibleLists();
     setupCollapsibleGrids();
 
