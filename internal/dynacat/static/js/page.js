@@ -326,10 +326,13 @@ function setupLazyImages() {
         image.classList.add("finished-transition");
     }
 
-    afterContentReady(() => {
+    const processImages = () => {
         setTimeout(() => {
             for (let i = 0; i < images.length; i++) {
                 const image = images[i];
+
+                if (image.dataset.lazyInitialized) continue;
+                image.dataset.lazyInitialized = "true";
 
                 if (image.complete) {
                     image.classList.add("cached");
@@ -343,7 +346,13 @@ function setupLazyImages() {
                 }
             }
         }, 1);
-    });
+    };
+
+    if (pageSetupComplete) {
+        processImages();
+    } else {
+        afterContentReady(processImages);
+    }
 }
 
 function getExpandedCollapsibleIndices(element) {
@@ -526,6 +535,7 @@ function setupCollapsibleGrids() {
 }
 
 const contentReadyCallbacks = [];
+let pageSetupComplete = false;
 
 function afterContentReady(callback) {
     contentReadyCallbacks.push(callback);
@@ -807,6 +817,8 @@ async function setupPage() {
         for (let i = 0; i < contentReadyCallbacks.length; i++) {
             contentReadyCallbacks[i]();
         }
+
+        pageSetupComplete = true;
 
         setTimeout(() => {
             setupTruncatedElementTitles();
