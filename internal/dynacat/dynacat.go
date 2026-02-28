@@ -171,10 +171,16 @@ func newApplication(c *config) (*application, error) {
 
 	app.slugToPage[""] = &config.Pages[0]
 
+	dynamicUpdateEnabled := true
+	if v := os.Getenv("ENABLE_DYNAMIC_UPDATE"); v == "false" || v == "0" || v == "f" {
+		dynamicUpdateEnabled = false
+	}
+
 	providers := &widgetProviders{
-		assetResolver: app.StaticAssetPath,
-		imageCache:    newImageCache(config.Server.BaseURL, config.Server.CacheDir),
-		baseURL:       config.Server.BaseURL,
+		assetResolver:        app.StaticAssetPath,
+		imageCache:           newImageCache(config.Server.BaseURL, config.Server.CacheDir),
+		baseURL:              config.Server.BaseURL,
+		DynamicUpdateEnabled: dynamicUpdateEnabled,
 	}
 
 	for p := range config.Pages {

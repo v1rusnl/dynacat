@@ -176,9 +176,10 @@ type widgetBase struct {
 }
 
 type widgetProviders struct {
-	assetResolver func(string) string
-	imageCache    *imageCache
-	baseURL       string
+	assetResolver        func(string) string
+	imageCache           *imageCache
+	baseURL              string
+	DynamicUpdateEnabled bool
 }
 
 func (w *widgetBase) requiresUpdate(now *time.Time) bool {
@@ -223,6 +224,10 @@ func (w *widgetBase) GetType() string {
 
 func (w *widgetBase) setProviders(providers *widgetProviders) {
 	w.Providers = providers
+}
+
+func (w *widgetBase) IsDynamicUpdateEnabled() bool {
+	return w.Providers == nil || w.Providers.DynamicUpdateEnabled
 }
 
 func (w *widgetBase) GetBaseURL() string {

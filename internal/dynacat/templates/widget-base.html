@@ -1,6 +1,6 @@
 <div class="widget widget-type-{{ .GetType }}{{ if .CSSClass }} {{ .CSSClass }}{{ end }}"
      data-widget-id="{{ .GetID }}"
-     {{ if .UpdateInterval }}
+     {{ if and .UpdateInterval (.IsDynamicUpdateEnabled) }}
      data-update-interval="{{ .UpdateInterval.Milliseconds }}"
      hx-get="{{ .GetBaseURL }}/api/widgets/{{ .GetID }}/content/"
      hx-trigger="every {{ .UpdateInterval.Milliseconds }}ms, refresh"

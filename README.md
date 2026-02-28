@@ -58,6 +58,7 @@ Easily create your own theme by tweaking a few numbers or choose from one of the
 
 ## Configuration
 Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](docs/configuration.md#configuring-dynacat).
+
 <details>
 <summary><strong>Preview example configuration file</strong></summary>
 <br>
@@ -216,8 +217,13 @@ services:
     restart: unless-stopped
     volumes:
       - ./config:/app/config
+      - ./assets:/app/assets
+      - /etc/localtime:/etc/localtime:ro
+      # Optionally, also mount docker socket if you want to use the docker containers widget
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - 8080:8080
+    env_file: .env
 ```
 
 Then, create a new directory called `config` and download the example starting [`dynacat.yml`](https://github.com/Panonim/dynacat/blob/main/docs/dynacat.yml) file into it by running:
@@ -241,6 +247,12 @@ docker logs dynacat
 <hr>
 </details>
 <br>
+
+### Environment Variables
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `ENABLE_DYNAMIC_UPDATE` | `true` | Set to `false`, `0`, or `f` to disable automatic widget refresh. Useful for static views or default glance behaviour. |
 
 ## Common issues
 <details>
