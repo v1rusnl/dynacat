@@ -120,9 +120,10 @@
         <main class="page{{ if .Page.CenterVertically }} center-vertically{{ end }}" id="page" aria-live="polite" aria-busy="true">
             <h1 class="visually-hidden">{{ .Page.Title }}</h1>
             <div class="page-content" id="page-content"></div>
-            <div class="page-loading-container">
+            <div class="page-loading-container" id="page-loading-container">
                 <div class="visually-hidden">Loading</div>
                 <div class="loading-icon" aria-hidden="true"></div>
+                <div class="page-loading-message" id="page-loading-message">Building cache...</div>
             </div>
         </main>
     </div>

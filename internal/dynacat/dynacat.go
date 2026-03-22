@@ -451,7 +451,6 @@ type templateData struct {
 	App                *application
 	Page               *page
 	Request            templateRequestData
-	IsCacheBuildingUI  bool
 }
 
 func (a *application) populateTemplateRequestData(data *templateRequestData, r *http.Request) {
@@ -511,10 +510,10 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 
 	// Check if cache is being built - this is only true during initial page load
 	isCacheBuilding := a.imageCache != nil && a.imageCache.IsBuildingCache()
+	w.Header().Set("X-Dynacat-Cache-Building", strconv.FormatBool(isCacheBuilding))
 
 	pageData := templateData{
-		Page:               page,
-		IsCacheBuildingUI:  isCacheBuilding,
+		Page: page,
 	}
 
 	var err error

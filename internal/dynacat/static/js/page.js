@@ -9,7 +9,10 @@ async function fetchPageContent(pageData) {
     const response = await fetch(`${pageData.baseURL}/api/pages/${pageData.slug}/content/`);
     const content = await response.text();
 
-    return content;
+    return {
+        content,
+        isCacheBuilding: response.headers.get("X-Dynacat-Cache-Building") === "true",
+    };
 }
 
 function setupCarousels() {
@@ -812,7 +815,30 @@ async function setupPage() {
 
     const pageElement = document.getElementById("page");
     const pageContentElement = document.getElementById("page-content");
-    const pageContent = await fetchPageContent(pageData);
+    const loadingContainer = document.getElementById("page-loading-container");
+    const loadingMessage = document.getElementById("page-loading-message");
+
+    let pageContent = "";
+    while (true) {
+        const response = await fetchPageContent(pageData);
+
+        if (!response.isCacheBuilding) {
+            if (loadingContainer) {
+                loadingContainer.classList.remove("cache-building");
+            }
+            pageContent = response.content;
+            break;
+        }
+
+        if (loadingContainer) {
+            loadingContainer.classList.add("cache-building");
+        }
+        if (loadingMessage) {
+            loadingMessage.textContent = "Building cache...";
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     pageContentElement.innerHTML = pageContent;
 
@@ -1289,7 +1315,8 @@ async function applyContentUpdate() {
         return rect.bottom > 0 && rect.top < window.innerHeight;
     }) || null;
     const anchorTopBefore = anchorWidget ? anchorWidget.getBoundingClientRect().top : null;
-    const pageContent = await fetchPageContent(pageData);
+    const response = await fetchPageContent(pageData);
+    const pageContent = response.content;
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = pageContent;
 
