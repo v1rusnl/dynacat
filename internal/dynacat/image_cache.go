@@ -195,6 +195,15 @@ func (c *imageCache) publicURL(filename string) string {
 	return c.baseURL + "/.cache/" + filename
 }
 
+func (c *imageCache) IsBuildingCache() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.inFlight) > 0
+}
+
 func extensionFromPath(path string) string {
 	ext := strings.ToLower(filepath.Ext(path))
 	if ext == "" {

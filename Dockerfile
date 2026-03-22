@@ -1,8 +1,19 @@
 FROM golang:1.24.3-alpine3.21 AS builder
 
 WORKDIR /app
-COPY . /app
-RUN CGO_ENABLED=0 go build .
+
+# Copy dependency files first (better layer caching)
+COPY go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
+
+# Copy source code
+COPY . .
+
+# Build with cache
+RUN --mount=type=cache,target=/go/pkg/mod \
+    --mount=type=cache,target=/root/.cache/go-build \
+    CGO_ENABLED=0 go build .
 
 FROM alpine:3.21
 

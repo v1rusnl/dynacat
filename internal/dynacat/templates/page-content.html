@@ -2,6 +2,16 @@
 <div class="mobile-reachability-header">{{ .Page.Title }}</div>
 {{ end }}
 
+{{ if .IsCacheBuildingUI }}
+<div class="cache-building-message" style="text-align: center; padding: 20px; margin: 10px 0; border-radius: 8px; background-color: var(--color-background-secondary, #f5f5f5);">
+    <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 10px;">
+        <div class="loading-icon" aria-hidden="true" style="width: 20px; height: 20px;"></div>
+        <span style="font-size: 14px; color: var(--color-text-secondary, #666);">Cache is being created...</span>
+    </div>
+    <span style="font-size: 12px; color: var(--color-text-subdue, #999); display: block;">This may take a moment on first load.</span>
+</div>
+{{ end }}
+
 {{ if .Page.HeadWidgets }}
 <div class="head-widgets">
     {{- range .Page.HeadWidgets }}

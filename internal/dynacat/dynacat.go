@@ -61,6 +61,8 @@ type application struct {
 
 	imageProxyMu  sync.RWMutex
 	imageProxyURLs map[string]imageProxyInfo
+
+	imageCache *imageCache
 }
 
 func newApplication(c *config) (*application, error) {
@@ -192,9 +194,11 @@ func newApplication(c *config) (*application, error) {
 
 	app.DynamicUpdateEnabled = dynamicUpdateEnabled
 
+	app.imageCache = newImageCache(config.Server.BaseURL, config.Server.CacheDir)
+
 	providers := &widgetProviders{
 		assetResolver:        app.StaticAssetPath,
-		imageCache:           newImageCache(config.Server.BaseURL, config.Server.CacheDir),
+		imageCache:           app.imageCache,
 		baseURL:              config.Server.BaseURL,
 		DynamicUpdateEnabled: dynamicUpdateEnabled,
 		app:                  app,
@@ -444,9 +448,10 @@ type templateRequestData struct {
 }
 
 type templateData struct {
-	App     *application
-	Page    *page
-	Request templateRequestData
+	App                *application
+	Page               *page
+	Request            templateRequestData
+	IsCacheBuildingUI  bool
 }
 
 func (a *application) populateTemplateRequestData(data *templateRequestData, r *http.Request) {
@@ -504,8 +509,12 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Check if cache is being built - this is only true during initial page load
+	isCacheBuilding := a.imageCache != nil && a.imageCache.IsBuildingCache()
+
 	pageData := templateData{
-		Page: page,
+		Page:               page,
+		IsCacheBuildingUI:  isCacheBuilding,
 	}
 
 	var err error
