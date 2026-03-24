@@ -23,6 +23,10 @@
     width: 1px;
 }
 
+.hidden {
+    display: none !important;
+}
+
 .list-horizontal-text {
     display: flex;
     list-style: none;
@@ -282,6 +286,10 @@ details[open] .summary::after {
 
 .collapsible-item {
     animation: collapsibleItemReveal .25s backwards;
+}
+
+.collapsible-container.no-reveal-animation > .collapsible-item {
+    animation: none;
 }
 
 @keyframes collapsibleItemReveal {

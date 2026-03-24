@@ -27,6 +27,7 @@ type monitorWidget struct {
 		Icon               customIconField `yaml:"icon"`
 		SameTab            bool            `yaml:"same-tab"`
 		StatusText         string          `yaml:"-"`
+		StatusLabel        string          `yaml:"-"`
 		StatusStyle        string          `yaml:"-"`
 		AltStatusCodes     []int           `yaml:"alt-status-codes"`
 	} `yaml:"sites"`
@@ -93,6 +94,7 @@ func (widget *monitorWidget) update(ctx context.Context) {
 		}
 
 		site.StatusText = statusCodeToText(status.Code, site.AltStatusCodes)
+		site.StatusLabel = monitorStatusLabel(status, site.StatusText, site.AltStatusCodes)
 		site.StatusStyle = statusCodeToStyle(status.Code, site.AltStatusCodes)
 	}
 }
@@ -134,6 +136,22 @@ func statusCodeToStyle(status int, altStatusCodes []int) string {
 	}
 
 	return "error"
+}
+
+func monitorStatusLabel(status *siteStatus, statusText string, altStatusCodes []int) string {
+	if status.Error != nil {
+		if status.TimedOut {
+			return "Timed Out"
+		}
+
+		return "ERROR"
+	}
+
+	if status.Code == 200 || slices.Contains(altStatusCodes, status.Code) {
+		return strconv.Itoa(status.Code) + " OK"
+	}
+
+	return strconv.Itoa(status.Code) + " " + statusText
 }
 
 type SiteStatusRequest struct {

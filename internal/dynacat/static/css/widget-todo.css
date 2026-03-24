@@ -39,13 +39,27 @@
     color: var(--color-text-highlight);
 }
 
-.todo-input:focus-within .todo-plus-icon {
+.todo-add-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 0.7rem;
+    transition: background-color .2s;
+}
+
+.todo-add-button:hover, .todo-add-button:focus-visible {
+    background-color: var(--color-widget-background-highlight);
+}
+
+.todo-input:focus-within .todo-plus-icon, .todo-add-button:hover .todo-plus-icon, .todo-add-button:focus-visible .todo-plus-icon {
     --icon-color: var(--color-text-base);
 }
 
 .todo-item {
     transform-origin: center;
-    padding: 0.5rem 0;
+    padding: 0.35rem 0;
 }
 
 .todo-item-checkbox {
@@ -95,16 +109,27 @@
 }
 
 .todo-item-drag-handle {
-    position: absolute;
-    top: -0.5rem;
-    inset-inline: 0;
-    height: 1rem;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 0.6rem;
+    color: var(--color-text-subdue);
     cursor: grab;
+    touch-action: none;
+}
+
+.todo-item-drag-handle:hover, .todo-item-drag-handle:focus-visible {
+    color: var(--color-text-base);
+    background-color: var(--color-widget-background-highlight);
+}
+
+.todo-item-drag-handle svg {
+    width: 1.4rem;
+    height: 1.4rem;
+    margin: auto;
 }
 
 .todo-item.is-being-dragged .todo-item-drag-handle {
-    height: 3rem;
-    top: -1.5rem;
+    cursor: grabbing;
 }
 
 .todo-item:has(.todo-item-checkbox:checked) .todo-item-text {
@@ -113,11 +138,24 @@
 }
 
 .todo-item-delete {
-    width: 1.5rem;
-    height: 1.5rem;
+    width: 2.4rem;
+    height: 2.4rem;
+    border-radius: 0.6rem;
+    color: var(--color-text-subdue);
     opacity: 0;
     transition: opacity .2s;
     outline-offset: .5rem;
+}
+
+.todo-item-delete:hover, .todo-item-delete:focus-visible {
+    color: var(--color-negative);
+    background-color: var(--color-widget-background-highlight);
+}
+
+.todo-item-delete svg {
+    width: 1.3rem;
+    height: 1.3rem;
+    margin: auto;
 }
 
 .todo-item:hover .todo-item-delete, .todo-item:focus-within .todo-item-delete {
@@ -126,4 +164,55 @@
 
 .todo-item.is-being-dragged .todo-item-delete {
     opacity: 0;
+}
+
+@media (pointer: fine) {
+    .todo-item {
+        cursor: grab;
+    }
+
+    .todo-item .todo-item-text, .todo-item .auto-scaling-textarea {
+        cursor: grab;
+    }
+
+    .todo-item .auto-scaling-textarea:focus {
+        cursor: text;
+    }
+
+    .todo-item:hover {
+        background-color: var(--color-widget-background-highlight);
+        border-radius: 0.7rem;
+    }
+
+    .todo-item.is-being-dragged {
+        cursor: grabbing;
+    }
+
+    .todo-item-drag-handle {
+        display: none;
+    }
+}
+
+@media (pointer: coarse) {
+    .todo-item {
+        padding: 0.55rem 0;
+    }
+
+    .todo-item-checkbox {
+        width: 1.7rem;
+        height: 1.7rem;
+    }
+
+    .todo-item-drag-handle, .todo-item-delete {
+        width: 2.8rem;
+        height: 2.8rem;
+    }
+
+    .todo-item-delete {
+        opacity: 0.72;
+    }
+}
+
+body.todo-is-dragging {
+    user-select: none;
 }

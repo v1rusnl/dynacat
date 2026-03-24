@@ -1,6 +1,7 @@
 # Configuring Dynacat
 
 - [Preconfigured page](#preconfigured-page)
+- [Docker & Server Options](docker-options.md)
 - [The config file](#the-config-file)
   - [Auto reload](#auto-reload)
   - [Environment variables](#environment-variables)
@@ -31,6 +32,7 @@
   - [Monitor](#monitor)
   - [Releases](#releases)
   - [Docker Containers](#docker-containers)
+  - [Docker Controller](#docker-controller)
   - [DNS Stats](#dns-stats)
   - [Server Stats](#server-stats)
   - [Repository](#repository)
@@ -45,6 +47,8 @@
   - [HTML](#html)
 - [External Integrations](#external-integrations)
   - [Currently Playing](#currently-playing)
+  - [Torrenting](#Torrenting)
+  - [Latest Media](#latest-media)
 ## Preconfigured page
 If you don't want to spend time reading through all the available configuration options and just want something to get you going quickly you can use [this `dynacat.yml` file](dynacat.yml) and make changes to it as you see fit. It will give you a page that looks like the following:
 
@@ -1913,6 +1917,7 @@ To delete a task, hover over it and click on the trash icon.
 | ---- | ---- | -------- | ------- |
 | id | string | no | |
 | storage | string | no | local |
+| collapse-after | integer | no | |
 
 ##### `id`
 
@@ -1924,6 +1929,10 @@ Controls where tasks are persisted. Accepted values:
 
 - `local` (default) — tasks are stored in the browser's localStorage, same as before. No server-side setup required.
 - `server` — tasks are stored in a SQLite database on the server. Tasks persist across browsers and server restarts. Requires `server.db-path` to be set (or uses the default `/app/assets/dynacat.db`).
+
+##### `collapse-after`
+
+When set, shows only the first N tasks and adds a "Show more" toggle for the rest. This is opt-in for the to-do widget and is disabled by default. Set to `-1` to explicitly disable collapsing.
 
 Example with server storage:
 
@@ -2354,6 +2363,79 @@ Whether to only show running containers. If set to `true` only containers that a
 | dynacat.id | The custom ID of the container. Used to group containers under a single parent. |
 | dynacat.parent | The ID of the parent container. Used to group containers under a single parent. |
 | dynacat.category | The category of the container. Used to filter containers by category. |
+
+### Docker Controller
+
+Display and manage your Docker containers and images interactively. Start, stop, restart, and remove containers; pull and remove images directly from the dashboard.
+
+Example:
+
+```yaml
+- type: docker-controller
+  title: Docker
+  show: both
+  update-interval: 15s
+```
+
+> [!NOTE]
+>
+> The widget requires access to `docker.sock`. If you're running Dynacat inside a container, this can be done by mounting the socket as a volume:
+>
+> ```yaml
+> services:
+>   dynacat:
+>     image: Panonim/dynacat
+>     volumes:
+>       - /var/run/docker.sock:/var/run/docker.sock
+> ```
+
+#### Features
+
+- **Container Management**: Start, stop, restart, or remove containers with a single click
+- **Image Management**: Pull images and remove unused images directly from the dashboard
+- **State Visualization**: Visual indicators show container and image status (running, stopped, error, etc.)
+- **Responsive Design**: Action buttons appear on hover; two-click confirmation for destructive actions
+- **Filtering**: Display containers only, images only, or both
+
+#### Properties
+
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| show | string | no | both |
+| sock-path | string | no | /var/run/docker.sock |
+| format-container-names | boolean | no | false |
+| collapse-after | integer | no | 4 |
+| update-interval | string | no | 15s |
+
+##### `show`
+Controls what to display in the widget. Possible values are:
+- `containers` - Display only containers
+- `images` - Display only images
+- `both` - Display both containers and images (default)
+
+##### `sock-path`
+The path to the Docker socket. This can also be a [remote socket](https://docs.docker.com/engine/daemon/remote-access/) or proxied socket using something like [docker-socket-proxy](https://github.com/Tecnativa/docker-socket-proxy).
+
+##### `format-container-names`
+When set to `true`, automatically converts container names such as `container_name_1` into `Container Name 1`.
+
+##### `collapse-after`
+The number of containers or images to display before showing a "SHOW MORE" button. Set to `-1` to never collapse.
+
+##### `update-interval`
+How often the widget polls for updates. The value is a string and must be a number followed by one of s (seconds), m (minutes) or h (hours). Default is `15s`.
+
+#### Usage
+
+**Container Actions:**
+- Running containers show **Stop**, **Restart**, and **Remove** buttons
+- Stopped containers show **Start** and **Remove** buttons
+- Click remove button once to enter confirmation mode (icon changes to checkmark), click again to confirm
+- Confirmation automatically cancels after 3 seconds if not confirmed
+
+**Image Actions:**
+- **Pull**: Enter an image name (e.g., `nginx:latest`, `ghcr.io/user/repo:tag`) in the input field and click the download button
+- **Remove**: Click the remove button on an image to delete it (two-click confirmation)
 
 ### DNS Stats
 Display statistics from a self-hosted ad-blocking DNS resolver such as AdGuard Home, Pi-hole, or Technitium.
@@ -3151,3 +3233,121 @@ When `true`, allows torrent titles to wrap across multiple lines instead of bein
 
 ##### `collapse-after`
 Number of torrents to show before collapsing the rest behind a "Show more" toggle. Set to `0` to disable collapsing.
+
+### Latest Media
+
+Display a poster grid of recently added items from Plex, Jellyfin, and/or Emby. Each card shows a portrait thumbnail with an optional dark gradient overlay containing the title, year, duration (movies only), and how long ago it was added.
+
+Example:
+
+```yaml
+- type: latest-media
+  title: Recently Added
+  update-interval: 30m
+  item-count: 12
+  columns: 4
+  hosts:
+    - url: jellyfin:https://jellyfin.example.com
+      token: ${JELLYFIN_KEY}
+    - url: plex:https://plex.example.com
+      token: ${PLEX_TOKEN}
+    - url: emby:https://emby.example.com
+      token: ${EMBY_KEY}
+```
+
+Preview:
+![](images/latest-media-preview.png)
+
+#### Properties
+
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| hosts | array | yes | |
+| item-count | integer | no | 12 |
+| columns | integer | no | 4 |
+| small-column | boolean | no | false |
+| show-overlay | boolean | no | true |
+| update-interval | string | no | 30m |
+
+##### `hosts`
+
+An array of media server hosts to fetch recently added items from. Results from all hosts are merged and sorted by date added (newest first), then trimmed to `item-count`.
+
+**Important**: Each host URL must be prefixed with the server type (`plex:`, `jellyfin:`, or `emby:`). For example:
+- `plex:https://192.168.1.10:32400`
+- `jellyfin:http://jellyfin.local:8096`
+- `emby:https://emby.example.com`
+
+Properties for each host:
+
+| Name | Type | Required | Default | Notes |
+| ---- | ---- | -------- | ------- | ----- |
+| url | string | yes | | Must include server type prefix |
+| token | string | yes | | API key or token for authentication |
+| allow-insecure | boolean | no | false | Ignore invalid/self-signed certificates |
+| libraries | array of strings | no | | Filter to specific library names; omit to fetch from all libraries |
+
+Example with library filtering:
+
+```yaml
+hosts:
+  - url: jellyfin:https://jellyfin.example.com
+    token: ${JELLYFIN_API_KEY}
+    libraries:
+      - Movies
+      - TV Shows
+  - url: plex:https://plex.example.com
+    token: ${PLEX_TOKEN}
+    libraries:
+      - Movies
+```
+
+##### `item-count`
+The total number of items to display across all hosts combined.
+
+##### `columns`
+The number of columns in the poster grid. Default is `4`.
+
+##### `small-column`
+When set to `true`, halves the number of columns. Useful when placing the widget in a narrow column. For example, with `columns: 4` and `small-column: true`, the grid will use 2 columns.
+
+##### `show-overlay`
+When `true` (default), each card displays a dark gradient overlay at the bottom containing the title, year, duration (movies only), and relative time since it was added. Set to `false` to show only the poster thumbnail without any overlay text.
+
+#### API Access & Tokens
+
+**Plex:**
+- Requires a Plex token. Follow [this guide](https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/) to obtain your token.
+
+**Jellyfin:**
+- Requires an API key. Generate one in: Administration → Dashboard → API Keys
+
+**Emby:**
+- Requires an API key. Generate one in: ⚙️ (settings icon) → Advanced → API Keys
+
+#### Image Caching & API Key Security
+
+All images displayed in the Latest Media widget are automatically cached on the Dynacat server. This approach provides several benefits:
+
+**API Key Security:**
+- API keys are **never exposed to the client/browser**
+- The server fetches images on behalf of the client using the provided credentials
+- The browser only receives local cached image URLs without any authentication tokens
+
+**Performance & Bandwidth:**
+- Images are downloaded once by the server and cached locally
+- Subsequent requests reuse the cached images instead of fetching from the media server again
+- Reduces bandwidth usage and load on your media server
+- Cached images are served with long-term cache headers for additional browser caching
+
+**Self-Signed Certificates:**
+When using self-signed or invalid certificates on your media server, set `allow-insecure: true` for that host:
+
+```yaml
+hosts:
+  - url: jellyfin:https://jellyfin.local:8920
+    token: ${JELLYFIN_API_KEY}
+    allow-insecure: true
+```
+
+The server will use an insecure HTTP client to fetch both metadata and images, while the browser only receives the cached local URLs and never needs to establish a direct connection to your media server.

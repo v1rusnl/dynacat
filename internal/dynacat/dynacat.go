@@ -31,6 +31,11 @@ const REMOTE_IMAGE_CACHE_DURATION = 7 * 24 * time.Hour
 
 var reservedPageSlugs = []string{"login", "logout"}
 
+type imageProxyInfo struct {
+	URL            string
+	AllowInsecure  bool
+}
+
 type application struct {
 	Version   string
 	CreatedAt time.Time
@@ -49,6 +54,15 @@ type application struct {
 	failedAuthAttempts     map[string]*failedAuthAttempt
 
 	todoStorage *todoStorage
+
+	sseMu               sync.RWMutex
+	sseClients          map[*sseClient]struct{}
+	DynamicUpdateEnabled bool
+
+	imageProxyMu  sync.RWMutex
+	imageProxyURLs map[string]imageProxyInfo
+
+	imageCache *imageCache
 }
 
 func newApplication(c *config) (*application, error) {
@@ -59,6 +73,8 @@ func newApplication(c *config) (*application, error) {
 		slugToPage:   make(map[string]*page),
 		widgetByID:   make(map[uint64]widget),
 		widgetToPage: make(map[uint64]*page),
+		sseClients:   make(map[*sseClient]struct{}),
+		imageProxyURLs: make(map[string]imageProxyInfo),
 	}
 	config := &app.Config
 
@@ -171,9 +187,21 @@ func newApplication(c *config) (*application, error) {
 
 	app.slugToPage[""] = &config.Pages[0]
 
+	dynamicUpdateEnabled := true
+	if v := os.Getenv("ENABLE_DYNAMIC_UPDATE"); v == "false" || v == "0" || v == "f" {
+		dynamicUpdateEnabled = false
+	}
+
+	app.DynamicUpdateEnabled = dynamicUpdateEnabled
+
+	app.imageCache = newImageCache(config.Server.BaseURL, config.Server.CacheDir)
+
 	providers := &widgetProviders{
-		assetResolver: app.StaticAssetPath,
-		imageCache:    newImageCache(config.Server.BaseURL, config.Server.CacheDir),
+		assetResolver:        app.StaticAssetPath,
+		imageCache:           app.imageCache,
+		baseURL:              config.Server.BaseURL,
+		DynamicUpdateEnabled: dynamicUpdateEnabled,
+		app:                  app,
 	}
 
 	for p := range config.Pages {
@@ -293,6 +321,29 @@ func newApplication(c *config) (*application, error) {
 	return app, nil
 }
 
+func (a *application) sseRegisterClient(c *sseClient) {
+	a.sseMu.Lock()
+	a.sseClients[c] = struct{}{}
+	a.sseMu.Unlock()
+}
+
+func (a *application) sseUnregisterClient(c *sseClient) {
+	a.sseMu.Lock()
+	delete(a.sseClients, c)
+	a.sseMu.Unlock()
+}
+
+func (a *application) sseBroadcast(msg string) {
+	a.sseMu.RLock()
+	defer a.sseMu.RUnlock()
+	for c := range a.sseClients {
+		select {
+		case c.ch <- msg:
+		default: // client too slow; drop rather than block
+		}
+	}
+}
+
 func (p *page) updateOutdatedWidgets() {
 	now := time.Now()
 
@@ -397,9 +448,9 @@ type templateRequestData struct {
 }
 
 type templateData struct {
-	App     *application
-	Page    *page
-	Request templateRequestData
+	App                *application
+	Page               *page
+	Request            templateRequestData
 }
 
 func (a *application) populateTemplateRequestData(data *templateRequestData, r *http.Request) {
@@ -456,6 +507,10 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
 		return
 	}
+
+	// Check if cache is being built - this is only true during initial page load
+	isCacheBuilding := a.imageCache != nil && a.imageCache.IsBuildingCache()
+	w.Header().Set("X-Dynacat-Cache-Building", strconv.FormatBool(isCacheBuilding))
 
 	pageData := templateData{
 		Page: page,
@@ -550,6 +605,26 @@ func (a *application) handleWidgetContentRequest(w http.ResponseWriter, r *http.
 	w.Write([]byte(widget.Render()))
 }
 
+func (a *application) handleWidgetActionRequest(w http.ResponseWriter, r *http.Request) {
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
+
+	widgetID, err := strconv.ParseUint(r.PathValue("widget"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid widget", http.StatusBadRequest)
+		return
+	}
+
+	widget, exists := a.widgetByID[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
+
+	widget.handleRequest(w, r)
+}
+
 func (a *application) StaticAssetPath(asset string) string {
 	return a.Config.Server.BaseURL + "/static/" + staticFSHash + "/" + asset
 }
@@ -615,6 +690,9 @@ func (a *application) server() (func() error, func() error) {
 	}
 
 	mux.HandleFunc("GET /api/widgets/{widget}/content/{$}", a.handleWidgetContentRequest)
+	mux.HandleFunc("POST /api/widgets/{widget}/action/{action...}", a.handleWidgetActionRequest)
+	mux.HandleFunc("GET /api/sse/updates", a.handleSSEUpdates)
+	mux.HandleFunc("GET /api/image-proxy/{hash}", a.handleImageProxyRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -692,7 +770,11 @@ func (a *application) server() (func() error, func() error) {
 		return nil
 	}
 
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	go a.sseUpdateLoop(ctx)
+
 	stop := func() error {
+		cancelCtx()
 		return server.Close()
 	}
 

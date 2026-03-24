@@ -12,6 +12,7 @@ type todoWidget struct {
 	cachedHTML template.HTML `yaml:"-"`
 	TodoID     string        `yaml:"id"`
 	Storage    string        `yaml:"storage"`
+	CollapseAfter *int       `yaml:"collapse-after"`
 }
 
 func (widget *todoWidget) initialize() error {
@@ -25,10 +26,26 @@ func (widget *todoWidget) initialize() error {
 		return fmt.Errorf("storage \"server\" requires an \"id\" to be set")
 	}
 
+	if widget.CollapseAfter != nil && *widget.CollapseAfter < -1 {
+		return fmt.Errorf("collapse-after must be -1 or greater, got %d", *widget.CollapseAfter)
+	}
+
 	widget.cachedHTML = widget.renderTemplate(widget, todoWidgetTemplate)
 	return nil
 }
 
 func (widget *todoWidget) Render() template.HTML {
 	return widget.cachedHTML
+}
+
+func (widget *todoWidget) HasCollapseAfter() bool {
+	return widget.CollapseAfter != nil
+}
+
+func (widget *todoWidget) GetCollapseAfter() int {
+	if widget.CollapseAfter == nil {
+		return 0
+	}
+
+	return *widget.CollapseAfter
 }

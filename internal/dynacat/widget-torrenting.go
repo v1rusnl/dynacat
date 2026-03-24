@@ -316,12 +316,7 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 		}
 	}
 
-	runes := []rune(t.Name)
-	if len(runes) > 40 {
-		info.ShortName = string(runes[:40]) + "..."
-	} else {
-		info.ShortName = t.Name
-	}
+	info.ShortName = t.Name
 
 	info.ProgressWidth = fmt.Sprintf("%.1f%%", t.Progress*100)
 

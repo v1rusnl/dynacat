@@ -37,6 +37,7 @@ func (widget *groupWidget) initialize() error {
 
 func (widget *groupWidget) update(ctx context.Context) {
 	widget.containerWidgetBase._update(ctx)
+	widget.scheduleNextUpdate()
 }
 
 func (widget *groupWidget) setProviders(providers *widgetProviders) {

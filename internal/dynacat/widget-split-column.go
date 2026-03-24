@@ -30,6 +30,7 @@ func (widget *splitColumnWidget) initialize() error {
 
 func (widget *splitColumnWidget) update(ctx context.Context) {
 	widget.containerWidgetBase._update(ctx)
+	widget.scheduleNextUpdate()
 }
 
 func (widget *splitColumnWidget) setProviders(providers *widgetProviders) {

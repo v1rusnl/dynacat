@@ -5,10 +5,17 @@ import { clamp, Vec2, toggleableEvents, throttledDebounce } from "./utils.js";
 const trashIconSvg = `<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
   <path fill-rule="evenodd" d="M5 3.25V4H2.75a.75.75 0 0 0 0 1.5h.3l.815 8.15A1.5 1.5 0 0 0 5.357 15h5.285a1.5 1.5 0 0 0 1.493-1.35l.815-8.15h.3a.75.75 0 0 0 0-1.5H11v-.75A2.25 2.25 0 0 0 8.75 1h-1.5A2.25 2.25 0 0 0 5 3.25Zm2.25-.75a.75.75 0 0 0-.75.75V4h3v-.75a.75.75 0 0 0-.75-.75h-1.5ZM6.05 6a.75.75 0 0 1 .787.713l.275 5.5a.75.75 0 0 1-1.498.075l-.275-5.5A.75.75 0 0 1 6.05 6Zm3.9 0a.75.75 0 0 1 .712.787l-.275 5.5a.75.75 0 0 1-1.498-.075l.275-5.5a.75.75 0 0 1 .786-.711Z" clip-rule="evenodd" />
 </svg>`;
+const dragIconSvg = `<svg fill="currentColor" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
+  <path d="M6.5 3.25a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0ZM6.5 8a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0ZM5.25 14.75a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5ZM12 3.25a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0ZM10.75 9.25a1.25 1.25 0 1 0 0-2.5 1.25 1.25 0 0 0 0 2.5ZM12 13.5a1.25 1.25 0 1 1-2.5 0 1.25 1.25 0 0 1 2.5 0Z"/>
+</svg>`;
 
 export default function(element) {
     element.swapWith(
-        Todo(element.dataset.todoId, element.dataset.todoStorage)
+        Todo(
+            element.dataset.todoId,
+            element.dataset.todoStorage,
+            element.dataset.todoCollapseAfter
+        )
     )
 }
 
@@ -95,17 +102,72 @@ function Item(unserialize = {}, onUpdate, onDelete, onEscape, onDragStart) {
                 serializeable.text = inputArea.value;
                 onUpdate();
             })
-        ).classes("min-width-0", "grow").append(
-            elem()
-                .classes("todo-item-drag-handle")
-                .on("mousedown", (e) => onDragStart(e, item))
-        ),
+        ).classes("min-width-0", "grow"),
+
+        elem("button")
+            .classes("todo-item-drag-handle", "shrink-0")
+            .attrs({
+                type: "button",
+                "aria-label": "Reorder task"
+            })
+            .html(dragIconSvg)
+            .on("pointerdown", (e) => onDragStart(e, item)),
 
         elem("button")
             .classes("todo-item-delete", "shrink-0")
+            .attrs({
+                type: "button",
+                "aria-label": "Delete task"
+            })
             .html(trashIconSvg)
             .on("click", () => onDelete(item))
     );
+
+    item.on("pointerdown", (event) => {
+        if (event.pointerType !== "mouse") return;
+        if (event.button !== 0) return;
+
+        const startTarget = event.target;
+        if (!(startTarget instanceof HTMLElement)) return;
+        if (startTarget.closest(".todo-item-delete, .todo-item-checkbox")) return;
+
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const pointerId = event.pointerId;
+        const dragThreshold = 4;
+
+        const cleanup = () => {
+            document.removeEventListener("pointermove", handlePointerMove);
+            document.removeEventListener("pointerup", handlePointerEnd);
+            document.removeEventListener("pointercancel", handlePointerEnd);
+        };
+
+        const handlePointerEnd = () => {
+            cleanup();
+        };
+
+        const handlePointerMove = (moveEvent) => {
+            if (moveEvent.pointerId !== pointerId) return;
+
+            const distance = Math.hypot(
+                moveEvent.clientX - startX,
+                moveEvent.clientY - startY
+            );
+
+            if (distance > 0) {
+                moveEvent.preventDefault();
+            }
+
+            if (distance < dragThreshold) return;
+
+            cleanup();
+            onDragStart(moveEvent, item);
+        };
+
+        document.addEventListener("pointermove", handlePointerMove);
+        document.addEventListener("pointerup", handlePointerEnd);
+        document.addEventListener("pointercancel", handlePointerEnd);
+    });
 
     input.component.setValue(serializeable.text);
     return item.component({
@@ -114,14 +176,59 @@ function Item(unserialize = {}, onUpdate, onDelete, onEscape, onDragStart) {
     });
 }
 
-function Todo(id, storageType) {
+function Todo(id, storageType, collapseAfterConfig) {
     const useServer = storageType === "server";
+    const parsedCollapseAfter = collapseAfterConfig === undefined
+        ? NaN
+        : parseInt(collapseAfterConfig, 10);
+    const shouldCollapse = Number.isInteger(parsedCollapseAfter) && parsedCollapseAfter >= 0;
+    const collapseAfter = shouldCollapse ? parsedCollapseAfter : 0;
     let items, input, inputArea, inputContainer, lastAddedItem;
+    let expandButton, expandButtonTextNode;
     let queuedForRemoval = 0;
     let reorderable;
     let isDragging = false;
+    let isExpanded = false;
 
-    const onDragEnd = () => isDragging = false;
+    const applyCollapsibleState = () => {
+        if (!shouldCollapse) {
+            return;
+        }
+
+        const shouldShowButton = items.children.length > collapseAfter;
+        if (shouldShowButton) {
+            if (!expandButton.isConnected) {
+                items.after(expandButton);
+            }
+        } else if (expandButton.isConnected) {
+            expandButton.remove();
+        }
+
+        if (!shouldShowButton) {
+            isExpanded = false;
+            items.classList.remove("container-expanded");
+            expandButton.classList.remove("container-expanded");
+            expandButtonTextNode.nodeValue = "Show more";
+        }
+
+        for (let i = 0; i < items.children.length; i++) {
+            const child = items.children[i];
+            const isCollapsibleItem = i >= collapseAfter;
+
+            child.classesIf(isCollapsibleItem, "collapsible-item");
+
+            if (isCollapsibleItem) {
+                child.style.animationDelay = ((i - collapseAfter) * 20).toString() + "ms";
+            } else {
+                child.style.removeProperty("animation-delay");
+            }
+        }
+    };
+
+    const onDragEnd = () => {
+        isDragging = false;
+        applyCollapsibleState();
+    };
     const onDragStart = (event, element) => {
         isDragging = true;
         reorderable.component.onDragStart(event, element);
@@ -149,6 +256,7 @@ function Todo(id, storageType) {
             item.remove();
             queuedForRemoval--;
             saveItems();
+            applyCollapsibleState();
         });
 
         if (items.children.length - queuedForRemoval === 0)
@@ -171,6 +279,7 @@ function Todo(id, storageType) {
         saveItems();
         const height = item.clientHeight;
         item.animate(itemAnim(height));
+        applyCollapsibleState();
 
         if (totalItemsBeforeAppending === 0)
             inputContainer.animate(inputMarginAnim());
@@ -180,10 +289,7 @@ function Todo(id, storageType) {
         switch (e.key) {
             case "Enter":
                 e.preventDefault();
-                const value = e.target.value.trim();
-                if (value === "") return;
-                addNewItem(value, e.ctrlKey);
-                input.component.setValue("");
+                submitInputValue(e.ctrlKey);
                 break;
             case "Escape":
                 e.target.blur();
@@ -195,31 +301,52 @@ function Todo(id, storageType) {
                 break;
         }
     };
+    const submitInputValue = (prepend = false) => {
+        const value = inputArea.value.trim();
+        if (value === "") return;
+        addNewItem(value, prepend);
+        input.component.setValue("");
+        inputArea.focus();
+    };
 
     const initialData = useServer ? [] : loadFromLocalStorage(id);
 
     items = elem()
         .classes("todo-items")
+        .classesIf(shouldCollapse, "collapsible-container")
         .append(
             ...initialData.map(data => newItem(data))
         );
 
-    if (useServer) {
-        loadFromServer(id).then(data => {
-            items.append(...data.map(d => newItem(d)));
-            if (data.length > 0) {
-                inputContainer.classes("margin-bottom-15");
-            }
-        });
+    if (shouldCollapse) {
+        expandButtonTextNode = document.createTextNode("Show more");
+        expandButton = elem("button")
+            .classes("expand-toggle-button")
+            .append(
+                expandButtonTextNode,
+                elem("span").classes("expand-toggle-button-icon")
+            )
+            .on("click", () => {
+                isExpanded = !isExpanded;
+                items.classesIf(isExpanded, "container-expanded");
+                expandButton.classesIf(isExpanded, "container-expanded");
+                expandButtonTextNode.nodeValue = isExpanded ? "Show less" : "Show more";
+            });
     }
 
-    return fragment().append(
+    const todoElement = fragment().append(
         inputContainer = elem()
             .classes("todo-input", "flex", "gap-10", "items-center")
             .classesIf(items.children.length > 0, "margin-bottom-15")
-            .styles({ paddingRight: "2.5rem" })
             .append(
-                elem().classes("todo-plus-icon", "shrink-0"),
+                elem("button")
+                    .classes("todo-add-button", "shrink-0")
+                    .attrs({
+                        type: "button",
+                        "aria-label": "Add task"
+                    })
+                    .append(elem().classes("todo-plus-icon"))
+                    .on("click", () => submitInputValue()),
                 input = autoScalingTextarea(textarea => inputArea = textarea
                     .on("keydown", handleInputKeyDown)
                     .attrs({
@@ -231,6 +358,20 @@ function Todo(id, storageType) {
 
         reorderable = verticallyReorderable(items, onItemRepositioned, onDragEnd),
     );
+
+    applyCollapsibleState();
+
+    if (useServer) {
+        loadFromServer(id).then(data => {
+            items.append(...data.map(d => newItem(d)));
+            if (data.length > 0) {
+                inputContainer.classes("margin-bottom-15");
+            }
+            applyCollapsibleState();
+        });
+    }
+
+    return todoElement;
 }
 
 
@@ -256,6 +397,7 @@ export function autoScalingTextarea(yieldTextarea = null) {
 
 export function verticallyReorderable(itemsContainer, onItemRepositioned, onDragEnd) {
     const classToAddToDraggedItem = "is-being-dragged";
+    const bodyDraggingClass = "todo-is-dragging";
 
     const currentlyBeingDragged = {
         element: null,
@@ -276,6 +418,7 @@ export function verticallyReorderable(itemsContainer, onItemRepositioned, onDrag
     const lastClientPos = Vec2.new();
     let initialScrollY = null;
     let addDocumentEvents, removeDocumentEvents;
+    let activePointerId = null;
 
     const handleReposition = (event) => {
         if (currentlyBeingDragged.element == null) return;
@@ -373,10 +516,11 @@ export function verticallyReorderable(itemsContainer, onItemRepositioned, onDrag
         animateChild();
     }
 
-    const handleRelease = (event) => {
-        if (event.buttons != 0) return;
+    const handleRelease = () => {
+        if (currentlyBeingDragged.element == null) return;
 
         removeDocumentEvents();
+        document.body.classList.remove(bodyDraggingClass);
         const item = currentlyBeingDragged;
         const element = item.element;
         element.styles({ pointerEvents: "none" });
@@ -409,7 +553,10 @@ export function verticallyReorderable(itemsContainer, onItemRepositioned, onDrag
     const handleGrab = (event, element) => {
         if (currentlyBeingDragged.element != null) return;
 
+        if (event.buttons !== undefined && (event.buttons & 1) == 0) return;
+        activePointerId = event.pointerId;
         event.preventDefault();
+        document.body.classList.add(bodyDraggingClass);
 
         const item = currentlyBeingDragged;
         if (item.element != null) return;
@@ -453,12 +600,25 @@ export function verticallyReorderable(itemsContainer, onItemRepositioned, onDrag
         container.element.styles({ transform: `translate(${offsetX}px, ${offsetY}px)` });
     }
 
+    const handlePointerMove = (event) => {
+        if (event.pointerId !== undefined && event.pointerId !== activePointerId) return;
+        event.preventDefault();
+        handleReposition(event);
+    };
+
+    const handlePointerUp = (event) => {
+        if (event.pointerId !== undefined && event.pointerId !== activePointerId) return;
+        activePointerId = null;
+        handleRelease(event);
+    };
+
     [addDocumentEvents, removeDocumentEvents] = toggleableEvents(document, {
-        "mousemove": handleReposition,
+        "pointermove": handlePointerMove,
         "scroll": handleReposition,
-        "mousedown": preventDefault,
+        "pointerdown": preventDefault,
         "contextmenu": preventDefault,
-        "mouseup": handleRelease,
+        "pointerup": handlePointerUp,
+        "pointercancel": handlePointerUp,
     });
 
     return elem().classes("drag-and-drop-container").append(

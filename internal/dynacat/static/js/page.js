@@ -9,7 +9,10 @@ async function fetchPageContent(pageData) {
     const response = await fetch(`${pageData.baseURL}/api/pages/${pageData.slug}/content/`);
     const content = await response.text();
 
-    return content;
+    return {
+        content,
+        isCacheBuilding: response.headers.get("X-Dynacat-Cache-Building") === "true",
+    };
 }
 
 function setupCarousels() {
@@ -211,10 +214,14 @@ function setupSearchBoxes() {
 }
 
 function setupDynamicRelativeTime() {
+    // Always do an immediate update pass (new elements may have arrived)
+    updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
+
+    if (dynamicRelativeTimeInitialized) return;
+    dynamicRelativeTimeInitialized = true;
+
     const updateInterval = 60 * 1000;
     let lastUpdateTime = Date.now();
-
-    updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
 
     const updateElementsAndTimestamp = () => {
         updateRelativeTimeForElements(document.querySelectorAll("[data-dynamic-relative-time]"));
@@ -309,6 +316,7 @@ function setupGroups() {
                 title.classList.add("widget-group-title-current");
                 title.setAttribute("aria-selected", "true");
                 tabs[t].classList.add("widget-group-content-current");
+                tabs[t].style.animation = '';
                 tabs[t].setAttribute("aria-hidden", "false");
             });
         }
@@ -326,24 +334,69 @@ function setupLazyImages() {
         image.classList.add("finished-transition");
     }
 
-    afterContentReady(() => {
+    const processImages = () => {
         setTimeout(() => {
             for (let i = 0; i < images.length; i++) {
                 const image = images[i];
 
+                if (image.dataset.lazyInitialized) continue;
+                image.dataset.lazyInitialized = "true";
+
+                const handleLoad = () => {
+                    image.classList.add("loaded");
+                    setTimeout(() => imageFinishedTransition(image), 400);
+                };
+
+                const handleError = () => {
+                    const fallbackSrc = image.dataset.fallbackSrc;
+                    if (fallbackSrc && image.src !== fallbackSrc) {
+                        image.src = fallbackSrc;
+                    }
+                };
+
                 if (image.complete) {
-                    image.classList.add("cached");
-                    setTimeout(() => imageFinishedTransition(image), 1);
+                    // Check if the image loaded successfully
+                    if (image.naturalHeight > 0) {
+                        image.classList.add("cached");
+                        setTimeout(() => imageFinishedTransition(image), 1);
+                    } else {
+                        // Image failed to load, try fallback
+                        handleError();
+                    }
                 } else {
-                    // TODO: also handle error event
-                    image.addEventListener("load", () => {
-                        image.classList.add("loaded");
-                        setTimeout(() => imageFinishedTransition(image), 400);
-                    });
+                    image.addEventListener("load", handleLoad);
+                    image.addEventListener("error", handleError);
                 }
             }
         }, 1);
-    });
+    };
+
+    if (pageSetupComplete) {
+        processImages();
+    } else {
+        afterContentReady(processImages);
+    }
+}
+
+function getExpandedCollapsibleIndices(element) {
+    const allContainers = [...element.querySelectorAll('.collapsible-container')];
+    return allContainers
+        .map((c, i) => c.classList.contains('container-expanded') ? i : -1)
+        .filter(i => i !== -1);
+}
+
+function restoreExpandedCollapsibles(element, expandedIndices) {
+    if (!expandedIndices.length) return;
+    const allContainers = [...element.querySelectorAll('.collapsible-container')];
+    for (const index of expandedIndices) {
+        const container = allContainers[index];
+        if (!container) continue;
+        const button = container.nextElementSibling;
+        if (button && button.classList.contains('expand-toggle-button')) {
+            container.classList.add('no-reveal-animation');
+            button.click();
+        }
+    }
 }
 
 function attachExpandToggleButton(collapsibleContainer) {
@@ -369,6 +422,7 @@ function attachExpandToggleButton(collapsibleContainer) {
 
         const topBefore = button.getClientRects()[0].top;
 
+        collapsibleContainer.classList.remove("no-reveal-animation");
         collapsibleContainer.classList.remove("container-expanded");
         button.classList.remove("container-expanded");
         textNode.nodeValue = showMoreText;
@@ -504,6 +558,8 @@ function setupCollapsibleGrids() {
 }
 
 const contentReadyCallbacks = [];
+let pageSetupComplete = false;
+let dynamicRelativeTimeInitialized = false;
 
 function afterContentReady(callback) {
     contentReadyCallbacks.push(callback);
@@ -759,7 +815,30 @@ async function setupPage() {
 
     const pageElement = document.getElementById("page");
     const pageContentElement = document.getElementById("page-content");
-    const pageContent = await fetchPageContent(pageData);
+    const loadingContainer = document.getElementById("page-loading-container");
+    const loadingMessage = document.getElementById("page-loading-message");
+
+    let pageContent = "";
+    while (true) {
+        const response = await fetchPageContent(pageData);
+
+        if (!response.isCacheBuilding) {
+            if (loadingContainer) {
+                loadingContainer.classList.remove("cache-building");
+            }
+            pageContent = response.content;
+            break;
+        }
+
+        if (loadingContainer) {
+            loadingContainer.classList.add("cache-building");
+        }
+        if (loadingMessage) {
+            loadingMessage.textContent = "Building cache...";
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
 
     pageContentElement.innerHTML = pageContent;
 
@@ -784,6 +863,9 @@ async function setupPage() {
         for (let i = 0; i < contentReadyCallbacks.length; i++) {
             contentReadyCallbacks[i]();
         }
+
+        pageSetupComplete = true;
+        _initSSE();
 
         setTimeout(() => {
             setupTruncatedElementTitles();
@@ -821,26 +903,28 @@ async function fetchWidgetContent(widgetElement) {
 async function updateWidget(widgetElement) {
     setupUserScrollIntentTracking();
 
-    // Store scroll position before update
     const refreshStartedAt = nowMs();
-    const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
-    const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
-
+    const widgetTopBefore = widgetElement.getBoundingClientRect().top;
+    const expandedIndices = getExpandedCollapsibleIndices(widgetElement);
     const newWidget = await fetchWidgetContent(widgetElement);
 
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
         const oldContent = widgetElement.querySelector('.widget-content');
         const newContent = newWidget.querySelector('.widget-content');
 
-        // Check if widget has images that we should preserve
-        const hasImages = oldContent && oldContent.querySelector('img[loading="lazy"]') !== null;
-        const shouldPreserveContent = hasImages || widgetElement.classList.contains('widget-type-custom-api');
+        if (oldContent && newContent) {
+            const savedInputs = {};
+            for (const input of oldContent.querySelectorAll('input[id]')) {
+                if (input.value) savedInputs[input.id] = input.value;
+            }
 
-        if (shouldPreserveContent && oldContent && newContent) {
-            // Update content while preserving cached images
             updateContentPreservingImages(oldContent, newContent);
 
-            // Update header if it changed
+            for (const [id, value] of Object.entries(savedInputs)) {
+                const input = newContent.querySelector('#' + id);
+                if (input) input.value = value;
+            }
+
             const oldHeader = widgetElement.querySelector('.widget-header');
             const newHeader = newWidget.querySelector('.widget-header');
             if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
@@ -863,38 +947,18 @@ async function updateWidget(widgetElement) {
                 cb();
             }
 
-            // Update any local playing progress updaters and thumbnail cropping after content changes
+            restoreExpandedCollapsibles(widgetElement, expandedIndices);
             setupPlayingProgressUpdater();
             setupPlayingThumbnailCropping();
+            notifyWidgetUpdated(widgetElement);
 
-            restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
-        } else {
-            clearWidgetPollingState(widgetElement);
+            const widgetTopAfter = widgetElement.getBoundingClientRect().top;
+            const topDelta = widgetTopAfter - widgetTopBefore;
+            const userScrolledDuringRefresh = lastUserScrollIntentAt > refreshStartedAt;
 
-            widgetElement.replaceWith(newWidget);
-
-            const callbacksIndexBefore = contentReadyCallbacks.length;
-
-            setupPopovers();
-            setupCarousels();
-            setupCollapsibleLists();
-            setupCollapsibleGrids();
-            setupGroups();
-            setupMasonries();
-            setupLazyImages();
-            setupTruncatedElementTitles();
-
-            const newCallbacks = contentReadyCallbacks.splice(callbacksIndexBefore);
-            for (const cb of newCallbacks) {
-                cb();
+            if (!userScrolledDuringRefresh && Math.abs(topDelta) > 1) {
+                window.scrollBy({ top: topDelta, behavior: 'auto' });
             }
-
-            // Re-setup polling for the new widget if it has an update interval
-            setupWidgetPolling();
-            setupPlayingProgressUpdater();
-            setupPlayingThumbnailCropping();
-
-            restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
         }
     }
 }
@@ -902,31 +966,37 @@ async function updateWidget(widgetElement) {
 function updateContentPreservingImages(oldContent, newContent) {
     const oldImages = Array.from(oldContent.querySelectorAll('img[loading="lazy"]'));
     const newImages = Array.from(newContent.querySelectorAll('img[loading="lazy"]'));
-    
-    // Create a map of image src to old image elements
     const imageMap = new Map();
+
     for (const img of oldImages) {
-        imageMap.set(img.src, img);
+        if (!imageMap.has(img.src)) {
+            imageMap.set(img.src, img);
+        }
     }
-    
-    // Replace new images with old ones if src matches to preserve cached state
+
     for (const newImg of newImages) {
         const oldImg = imageMap.get(newImg.src);
         if (oldImg) {
-            // Clone the old image to preserve its loaded state
-            const clonedImg = oldImg.cloneNode(true);
-            // Copy over any new attributes except src
             for (const attr of newImg.attributes) {
                 if (attr.name !== 'src' && attr.name !== 'class') {
-                    clonedImg.setAttribute(attr.name, attr.value);
+                    oldImg.setAttribute(attr.name, attr.value);
                 }
             }
-            newImg.replaceWith(clonedImg);
+            newImg.replaceWith(oldImg);
         }
     }
-    
-    // Now update the content
-    oldContent.innerHTML = newContent.innerHTML;
+
+    oldContent.replaceWith(newContent);
+}
+
+function notifyWidgetUpdated(widgetElement) {
+    widgetElement.dispatchEvent(new CustomEvent('dynacat:widget-updated', {
+        bubbles: true,
+        detail: {
+            widget: widgetElement,
+            widgetId: widgetElement.dataset.widgetId || null,
+        },
+    }));
 }
 
 function nowMs() {
@@ -935,7 +1005,6 @@ function nowMs() {
 
 let userScrollIntentTrackingInitialized = false;
 let lastUserScrollIntentAt = 0;
-let pendingScrollRestoreFrameId = null;
 
 function setupUserScrollIntentTracking() {
     if (userScrollIntentTrackingInitialized) {
@@ -951,12 +1020,6 @@ function setupUserScrollIntentTracking() {
         }
 
         lastUserScrollIntentAt = nowMs();
-
-        // Cancel any pending scroll restoration
-        if (pendingScrollRestoreFrameId !== null) {
-            cancelAnimationFrame(pendingScrollRestoreFrameId);
-            pendingScrollRestoreFrameId = null;
-        }
     };
 
     window.addEventListener("wheel", markUserScrollIntent, { passive: true });
@@ -964,36 +1027,6 @@ function setupUserScrollIntentTracking() {
     window.addEventListener("keydown", markUserScrollIntent, { passive: true });
 
     userScrollIntentTrackingInitialized = true;
-}
-
-function restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt) {
-    if (!wasAtBottom) {
-        return;
-    }
-
-    // If user scrolled recently (within last 2 seconds), respect their intent
-    const recentScrollThresholdMs = 2000;
-    const shouldSkipRestore = () => {
-        const timeSinceLastScroll = nowMs() - lastUserScrollIntentAt;
-        return timeSinceLastScroll < recentScrollThresholdMs;
-    };
-
-    const restore = () => {
-        if (shouldSkipRestore()) {
-            pendingScrollRestoreFrameId = null;
-            return;
-        }
-
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'auto' });
-        pendingScrollRestoreFrameId = null;
-    };
-
-    // Run immediately and once more on the next frame to absorb layout shifts.
-    restore();
-
-    if (!shouldSkipRestore()) {
-        pendingScrollRestoreFrameId = requestAnimationFrame(restore);
-    }
 }
 
 function remainingDelayMs(intervalMs, lastRunAt) {
@@ -1034,8 +1067,6 @@ function formatDurationMs(ms) {
     return `${minutes}:${String(seconds).padStart(2, '0')}`;
 }
 
-// Wall-clock state for each session, keyed by data-session-key.
-// Survives DOM replacements so the clock never jumps on a widget refresh.
 const playingSessionStates = new Map();
 
 function _playingEstimate(state) {
@@ -1052,8 +1083,6 @@ function _playingRender(sess, offsetMs, durationMs) {
     });
 }
 
-// Called on every setupPlayingProgressUpdater invocation (initial load + after each widget refresh).
-// Re-anchors the clock only when the server reports a meaningful change.
 function _playingSyncWidget(widget) {
     const DRIFT_TOLERANCE_MS = 3000;
     const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
@@ -1063,7 +1092,6 @@ function _playingSyncWidget(widget) {
 
         const serverOffset = Number(sess.dataset.offset || 0);
         const isPlaying = sess.dataset.playing === 'true';
-        // Use session-key when available; fall back to widget-id + position index.
         const key = sess.dataset.sessionKey || (widget.dataset.widgetId + ':' + idx);
 
         let state = playingSessionStates.get(key);
@@ -1072,12 +1100,10 @@ function _playingSyncWidget(widget) {
             const drift = Math.abs(serverOffset - estimated);
             const stateChanged = state.isPlaying !== isPlaying;
             if (stateChanged || drift > DRIFT_TOLERANCE_MS) {
-                // Playback state flipped or we drifted too far — re-anchor to server value.
                 state.anchorOffset = serverOffset;
                 state.anchorTime = Date.now();
                 state.isPlaying = isPlaying;
             }
-            // else: clock is running fine, leave it alone (no jump).
         } else {
             state = { anchorOffset: serverOffset, anchorTime: Date.now(), isPlaying };
             playingSessionStates.set(key, state);
@@ -1087,7 +1113,6 @@ function _playingSyncWidget(widget) {
     });
 }
 
-// Called every second by the per-widget interval.
 function _playingTickWidget(widget) {
     const sessions = widget.querySelectorAll('.playing-session[data-duration][data-offset]');
     sessions.forEach((sess, idx) => {
@@ -1106,18 +1131,14 @@ function setupPlayingProgressUpdater() {
 
     widgets.forEach(widget => {
         seen.add(widget);
-
-        // Always sync so that paused/resumed/seeked state is picked up from the latest DOM.
         _playingSyncWidget(widget);
 
         if (playingUpdaters.has(widget)) return;
 
-        // First time seeing this widget element — start the 1 s tick.
         const intervalId = setInterval(() => _playingTickWidget(widget), 1000);
         playingUpdaters.set(widget, { intervalId });
     });
 
-    // Tear down intervals for widget elements that are no longer in the DOM.
     Array.from(playingUpdaters.keys()).forEach(widget => {
         if (!seen.has(widget)) clearPlayingUpdater(widget);
     });
@@ -1131,9 +1152,7 @@ function setupPlayingThumbnailCropping() {
     imgs.forEach(img => {
         const container = img.closest('.playing-thumbnail');
         const apply = () => {
-            // Guard in case image has no natural sizes
             if (!img.naturalWidth || !img.naturalHeight) {
-                // keep default (contain)
                 img.classList.remove('playing-crop');
                 if (container) container.classList.remove('playing-portrait');
                 return;
@@ -1143,11 +1162,9 @@ function setupPlayingThumbnailCropping() {
                 img.classList.add('playing-crop');
                 if (container) container.classList.remove('playing-portrait');
             } else if (img.naturalHeight > img.naturalWidth) {
-                // portrait: make container taller and remove background
                 img.classList.remove('playing-crop');
                 if (container) container.classList.add('playing-portrait');
             } else {
-                // square
                 img.classList.remove('playing-crop');
                 if (container) container.classList.remove('playing-portrait');
             }
@@ -1290,12 +1307,16 @@ function setupWidgetPolling() {
 async function applyContentUpdate() {
     setupUserScrollIntentTracking();
 
-    // Store scroll position before update
     const refreshStartedAt = nowMs();
-    const scrollThreshold = 100; // pixels from bottom to be considered "at bottom"
+    const scrollThreshold = 100;
     const wasAtBottom = (window.innerHeight + window.scrollY) >= (document.documentElement.scrollHeight - scrollThreshold);
-
-    const pageContent = await fetchPageContent(pageData);
+    const anchorWidget = Array.from(document.querySelectorAll('.widget')).find(widget => {
+        const rect = widget.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < window.innerHeight;
+    }) || null;
+    const anchorTopBefore = anchorWidget ? anchorWidget.getBoundingClientRect().top : null;
+    const response = await fetchPageContent(pageData);
+    const pageContent = response.content;
     const tempDiv = document.createElement("div");
     tempDiv.innerHTML = pageContent;
 
@@ -1303,6 +1324,8 @@ async function applyContentUpdate() {
     const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
 
     let anyReplaced = false;
+    const expandedIndicesMap = new Map();
+    const updatedWidgets = [];
 
     for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
         const realWidgets = Array.from(realContainers[i].children);
@@ -1312,19 +1335,15 @@ async function applyContentUpdate() {
             const realWidget = realWidgets[j];
             const tempWidget = tempWidgets[j];
 
+            expandedIndicesMap.set(realWidget, getExpandedCollapsibleIndices(realWidget));
+
             if (realWidget.dataset.updateInterval && realWidget.outerHTML !== tempWidget.outerHTML) {
                 const oldContent = realWidget.querySelector('.widget-content');
                 const newContent = tempWidget.querySelector('.widget-content');
 
-                // Check if widget has images that we should preserve
-                const hasImages = oldContent && oldContent.querySelector('img[loading="lazy"]') !== null;
-                const shouldPreserveContent = hasImages || realWidget.classList.contains('widget-type-custom-api');
-
-                if (shouldPreserveContent && oldContent && newContent) {
-                    // Update content while preserving cached images
+                if (oldContent && newContent) {
                     updateContentPreservingImages(oldContent, newContent);
 
-                    // Update header if it changed
                     const oldHeader = realWidget.querySelector('.widget-header');
                     const newHeader = tempWidget.querySelector('.widget-header');
                     if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
@@ -1332,11 +1351,7 @@ async function applyContentUpdate() {
                     }
 
                     anyReplaced = true;
-                } else {
-                    clearWidgetPollingState(realWidget);
-
-                    realWidget.replaceWith(tempWidget);
-                    anyReplaced = true;
+                    updatedWidgets.push(realWidget);
                 }
             }
         }
@@ -1360,11 +1375,31 @@ async function applyContentUpdate() {
             cb();
         }
 
-        // Re-setup custom-api widget polling for any replaced widgets
-        setupWidgetPolling();
-        setupPlayingProgressUpdater();
+        for (const [widget, indices] of expandedIndicesMap) {
+            restoreExpandedCollapsibles(widget, indices);
+        }
 
-        restoreScrollAfterRefresh(wasAtBottom, refreshStartedAt);
+        setupPlayingProgressUpdater();
+        for (const widget of updatedWidgets) {
+            notifyWidgetUpdated(widget);
+        }
+
+        const userScrolledDuringRefresh = lastUserScrollIntentAt > refreshStartedAt;
+
+        if (!userScrolledDuringRefresh) {
+            if (wasAtBottom) {
+                const maxScroll = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+                if (Math.abs(window.scrollY - maxScroll) > 1) {
+                    window.scrollTo({ top: maxScroll, behavior: 'auto' });
+                }
+            } else if (anchorWidget && anchorTopBefore != null) {
+                const anchorTopAfter = anchorWidget.getBoundingClientRect().top;
+                const topDelta = anchorTopAfter - anchorTopBefore;
+                if (Math.abs(topDelta) > 1) {
+                    window.scrollBy({ top: topDelta, behavior: 'auto' });
+                }
+            }
+        }
     }
 }
 
@@ -1429,6 +1464,122 @@ function startPolling() {
 
     poll();
 }
+
+window.dynacatRefreshWidget = async function(widgetId) {
+    const widget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+    if (widget) {
+        await updateWidget(widget);
+        return;
+    }
+
+    _dynacatFetchAndApplyWidget(widgetId);
+};
+
+function _dynacatFetchAndApplyWidget(widgetId) {
+    const url = `${pageData.baseURL}/api/widgets/${widgetId}/content/`;
+    fetch(url, { credentials: 'include' })
+        .then(r => r.ok ? r.text() : Promise.reject(r.status))
+        .then(html => _applyWidgetUpdate(widgetId, html))
+        .catch(err => console.error('Widget refresh failed', widgetId, err));
+}
+
+function _applyWidgetUpdate(widgetId, html) {
+    const target = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+    if (!target) return;
+
+    const expandedIndices = getExpandedCollapsibleIndices(target);
+    const htmlElem = document.documentElement;
+    const prevAnchor = htmlElem.style.overflowAnchor;
+    htmlElem.style.overflowAnchor = 'none';
+
+    try {
+        Idiomorph.morph(target, html, { morphStyle: 'outerHTML' });
+
+        const liveTarget = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
+        if (!liveTarget) return;
+
+        setupCollapsibleLists();
+        setupCollapsibleGrids();
+
+        if (expandedIndices?.length) {
+            restoreExpandedCollapsibles(liveTarget, expandedIndices);
+        }
+
+        const lazyImages = liveTarget.querySelectorAll('img[loading=lazy]');
+        for (let i = 0; i < lazyImages.length; i++) {
+            const img = lazyImages[i];
+            if (img.complete && img.naturalHeight > 0) {
+                img.classList.add('cached', 'finished-transition');
+                img.dataset.lazyInitialized = 'true';
+            }
+        }
+
+        const groupContents = liveTarget.querySelectorAll('.widget-group-content');
+        for (let i = 0; i < groupContents.length; i++) {
+            groupContents[i].style.animation = 'none';
+        }
+
+        _runPostSettleSetup();
+        notifyWidgetUpdated(liveTarget);
+
+    } finally {
+        htmlElem.style.overflowAnchor = prevAnchor;
+    }
+}
+
+function _runPostSettleSetup() {
+    setupPopovers();
+    setupCarousels();
+    setupGroups();
+    setupMasonries();
+    setupDynamicRelativeTime();
+    setupLazyImages();
+    setupTruncatedElementTitles();
+    setupPlayingProgressUpdater();
+    setupPlayingThumbnailCropping();
+}
+
+let _sseSource = null;
+let _intentionallyClosed = false;
+
+function _closeSSE() {
+    if (_sseSource) {
+        _intentionallyClosed = true;
+        _sseSource.close();
+        _sseSource = null;
+    }
+}
+
+function _initSSE() {
+    if (!pageData.dynamicUpdateEnabled) {
+        return;
+    }
+
+    const url = `${pageData.baseURL}/api/sse/updates`;
+    _sseSource = new EventSource(url, { withCredentials: true });
+
+    _sseSource.addEventListener('widget-update', function(event) {
+        try {
+            const data = JSON.parse(event.data);
+            _applyWidgetUpdate(data.widgetId, data.html);
+        } catch (e) {
+            console.error('SSE parse error', e);
+        }
+    });
+
+    _sseSource.onerror = function() {
+        if (_intentionallyClosed) {
+            return;
+        }
+        if (_sseSource.readyState === EventSource.CLOSED) {
+            window.location.reload();
+        }
+    };
+}
+
+window.addEventListener('beforeunload', _closeSSE);
+
+window.dynacatSetupPopovers = setupPopovers;
 
 setupPage().then(() => {
     startPolling();

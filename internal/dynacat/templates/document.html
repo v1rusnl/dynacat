@@ -11,6 +11,7 @@
         /*{{ end }}*/
         baseURL: "{{ .App.Config.Server.BaseURL }}",
         theme: "{{ .Request.Theme.Key }}",
+        dynamicUpdateEnabled: {{ .App.DynamicUpdateEnabled }},
     };
     </script>
     <title>{{ block "document-title" . }}{{ end }}</title>
@@ -30,6 +31,7 @@
     {{ if .App.Config.Theme.CustomCSSFile }}<link rel="stylesheet" href="{{ .App.Config.Theme.CustomCSSFile }}?v={{ .App.CreatedAt.Unix }}">{{ end }}
     {{ block "document-head-after" . }}{{ end }}
     {{ if .App.Config.Document.Head }}{{ .App.Config.Document.Head }}{{ end }}
+    <script src='{{ .App.StaticAssetPath "js/idiomorph.js" }}'></script>
 </head>
 <body>
 {{ template "document-body" . }}

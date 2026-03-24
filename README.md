@@ -3,12 +3,13 @@
 <p align="center">
   <a href="#installation">Install</a> •
   <a href="docs/configuration.md#configuring-dynacat">Configuration</a> •
-  <a href="https://discord.gg/mUqTzrfjFP">Discord</a>
+  <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
+  <a href="https://www.paypal.com/paypalme/imartur">Sponsor</a> 
 </p>
 <p align="center">
   <a href="https://github.com/glanceapp/community-widgets">Glance Community widgets</a> •
   <a href="docs/preconfigured-pages.md">Preconfigured pages</a> •
-  <a href="docs/themes.md">Themes</a>
+  <a href="docs/themes.md">Themes</a> 
 </p>
 
 <p align="center">A glance fork that is focused on dynamic updates<br>and easy app integration without the need of writing your own widget's.</p>
@@ -57,6 +58,7 @@ Easily create your own theme by tweaking a few numbers or choose from one of the
 
 ## Configuration
 Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](docs/configuration.md#configuring-dynacat).
+
 <details>
 <summary><strong>Preview example configuration file</strong></summary>
 <br>
@@ -215,8 +217,13 @@ services:
     restart: unless-stopped
     volumes:
       - ./config:/app/config
+      - ./assets:/app/assets
+      - /etc/localtime:/etc/localtime:ro
+      # Optionally, also mount docker socket if you want to use the docker containers widget
+      # - /var/run/docker.sock:/var/run/docker.sock:ro
     ports:
       - 8080:8080
+    env_file: .env
 ```
 
 Then, create a new directory called `config` and download the example starting [`dynacat.yml`](https://github.com/Panonim/dynacat/blob/main/docs/dynacat.yml) file into it by running:
@@ -239,7 +246,23 @@ docker logs dynacat
 
 <hr>
 </details>
+<details>
+<summary><strong>Coming from Glance</strong></summary>
+If you have already set up glance you're only one step away from switching to Dynacat!
+
+All you have to do is replace your current image (`glanceapp/glance:latest`) with one from below:
+
+```yaml
+panonim/dynacat:latest
+```
+</details>
 <br>
+
+### Environment Variables
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `ENABLE_DYNAMIC_UPDATE` | `true` | Set to `false`, `0`, or `f` to disable automatic widget refresh. Useful for static views or default glance behaviour. |
 
 ## Common issues
 <details>
@@ -354,5 +377,7 @@ docker build -t owner/dynacat:latest .
 </details>
 
 <br>
+
+**If you like this project, please consider [sponsoring](https://www.paypal.com/paypalme/imartur).**
 
 > This is a fork of a ['Glance'](https://github.com/glanceapp/glance) dashboard. 

@@ -77,12 +77,16 @@ func newWidget(widgetType string) (widget, error) {
 		w = &customAPIWidget{}
 	case "docker-containers":
 		w = &dockerContainersWidget{}
+	case "docker-controller":
+		w = &dockerControllerWidget{}
 	case "server-stats":
 		w = &serverStatsWidget{}
 	case "to-do":
 		w = &todoWidget{}
 	case "playing":
 		w = &playingWidget{}
+	case "latest-media":
+		w = &latestMediaWidget{}
 	case "torrenting":
 		w = &torrentingWidget{}
 	default:
@@ -172,8 +176,39 @@ type widgetBase struct {
 }
 
 type widgetProviders struct {
-	assetResolver func(string) string
-	imageCache    *imageCache
+	assetResolver        func(string) string
+	imageCache           *imageCache
+	baseURL              string
+	DynamicUpdateEnabled bool
+	app                  *application
+}
+
+// SecureImageURL processes an image URL through the caching and proxy system.
+// Returns either a cached URL, a proxy URL without credentials, or empty string on error.
+// If allowInsecure is true, self-signed certificates will be accepted.
+func (p *widgetProviders) SecureImageURL(ctx context.Context, imageURL string, allowInsecure bool) string {
+	if imageURL == "" {
+		return ""
+	}
+
+	hash := hashString(imageURL)
+
+	// Register with the application's image proxy for on-demand serving
+	if p.app != nil {
+		p.app.registerImageProxy(hash, imageURL, allowInsecure)
+	}
+
+	// Try to cache the image
+	if p.imageCache != nil {
+		cachedURL, err := p.imageCache.CacheURLWithClient(ctx, imageURL, allowInsecure)
+		if err == nil && cachedURL != "" {
+			// Successfully cached, return the cached URL
+			return cachedURL
+		}
+	}
+
+	// Fall back to proxy URL (doesn't expose credentials)
+	return fmt.Sprintf("/api/image-proxy/%s", hash)
 }
 
 func (w *widgetBase) requiresUpdate(now *time.Time) bool {
@@ -218,6 +253,17 @@ func (w *widgetBase) GetType() string {
 
 func (w *widgetBase) setProviders(providers *widgetProviders) {
 	w.Providers = providers
+}
+
+func (w *widgetBase) IsDynamicUpdateEnabled() bool {
+	return w.Providers == nil || w.Providers.DynamicUpdateEnabled
+}
+
+func (w *widgetBase) GetBaseURL() string {
+	if w.Providers == nil {
+		return ""
+	}
+	return w.Providers.baseURL
 }
 
 func (w *widgetBase) renderTemplate(data any, t *template.Template) template.HTML {

@@ -13,32 +13,32 @@ on:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
       - name: Checkout the target Git reference
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request' && env.DOCKERHUB_USERNAME != ''
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ env.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Golang
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Lowercase repository and actor
         run: |
@@ -47,7 +47,7 @@ jobs:
           echo "DOCKERHUB_USER_LOWER=$(echo '${{ env.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
 
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ env.ACTOR }}
@@ -55,7 +55,7 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: |
             ghcr.io/${{ env.IMAGE_REPO }}
@@ -67,7 +67,7 @@ jobs:
             type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/') }}
 
       - name: Build and push Docker images
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: ./Dockerfile
@@ -75,3 +75,32 @@ jobs:
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check whether pushed tag is the latest tag
+        id: latest_tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          latest_tag="$(git tag --sort=-version:refname | head -n 1)"
+          echo "latest_tag=${latest_tag}" >> "${GITHUB_OUTPUT}"
+          if [ "${GITHUB_REF_NAME}" = "${latest_tag}" ]; then
+            echo "is_latest=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "is_latest=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Export README.md from main branch
+        if: startsWith(github.ref, 'refs/tags/') && steps.latest_tag.outputs.is_latest == 'true' && env.DOCKERHUB_USERNAME != ''
+        run: |
+          git fetch origin main:refs/remotes/origin/main
+          git show origin/main:README.md > README.DOCKERHUB.md
+
+      - name: Update Docker Hub description from main README
+        if: startsWith(github.ref, 'refs/tags/') && steps.latest_tag.outputs.is_latest == 'true' && env.DOCKERHUB_USERNAME != ''
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ env.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_USER_LOWER }}/dynacat
+          readme-filepath: ./README.DOCKERHUB.md

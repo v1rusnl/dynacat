@@ -375,7 +375,15 @@
     if (!root) return;
 
     const globalState = (window.__dynacatPlayingProgressState ||= new Map());
+    const animationFrameId = (window.__dynacatPlayingAnimationId ||= new Map());
     const nowEpochMs = Date.now();
+
+    // Cancel any existing animation frame for this widget to prevent duplicate loops
+    const widgetId = root.closest('.widget')?.dataset.widgetId;
+    if (widgetId && animationFrameId.has(widgetId)) {
+        cancelAnimationFrame(animationFrameId.get(widgetId));
+        animationFrameId.delete(widgetId);
+    }
 
     const sessions = Array.from(root.querySelectorAll('.playing-session[data-playing="true"]'));
     if (sessions.length === 0) return;
@@ -466,7 +474,10 @@
         }
 
         lastSecond = currentSecond;
-        requestAnimationFrame(tick);
+        const nextFrameId = requestAnimationFrame(tick);
+        if (widgetId) {
+            animationFrameId.set(widgetId, nextFrameId);
+        }
     };
 
     tick(start);

@@ -62,6 +62,10 @@ func newImageCache(baseURL string, dir string) *imageCache {
 }
 
 func (c *imageCache) CacheURL(ctx context.Context, rawURL string) (string, error) {
+	return c.CacheURLWithClient(ctx, rawURL, false)
+}
+
+func (c *imageCache) CacheURLWithClient(ctx context.Context, rawURL string, allowInsecure bool) (string, error) {
 	if c == nil || rawURL == "" {
 		return "", nil
 	}
@@ -91,7 +95,7 @@ func (c *imageCache) CacheURL(ctx context.Context, rawURL string) (string, error
 	c.inFlight[rawURL] = entry
 	c.mu.Unlock()
 
-	entry.url, entry.err = c.downloadAndCache(ctx, rawURL, hashHex, parsed.Path)
+	entry.url, entry.err = c.downloadAndCacheWithClient(ctx, rawURL, hashHex, parsed.Path, allowInsecure)
 
 	c.mu.Lock()
 	delete(c.inFlight, rawURL)
@@ -120,6 +124,10 @@ func (c *imageCache) findExistingFile(hashHex string, urlPath string) (string, b
 }
 
 func (c *imageCache) downloadAndCache(ctx context.Context, rawURL string, hashHex string, urlPath string) (string, error) {
+	return c.downloadAndCacheWithClient(ctx, rawURL, hashHex, urlPath, false)
+}
+
+func (c *imageCache) downloadAndCacheWithClient(ctx context.Context, rawURL string, hashHex string, urlPath string, allowInsecure bool) (string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", err
@@ -128,7 +136,8 @@ func (c *imageCache) downloadAndCache(ctx context.Context, rawURL string, hashHe
 	req.Header.Set("Accept", "image/*")
 	setBrowserUserAgentHeader(req)
 
-	resp, err := defaultHTTPClient.Do(req)
+	client := ternary(allowInsecure, defaultInsecureHTTPClient, defaultHTTPClient)
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", err
 	}
@@ -184,6 +193,15 @@ func (c *imageCache) publicURL(filename string) string {
 	}
 
 	return c.baseURL + "/.cache/" + filename
+}
+
+func (c *imageCache) IsBuildingCache() bool {
+	if c == nil {
+		return false
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.inFlight) > 0
 }
 
 func extensionFromPath(path string) string {
