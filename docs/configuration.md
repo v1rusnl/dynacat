@@ -2438,7 +2438,7 @@ How often the widget polls for updates. The value is a string and must be a numb
 - **Remove**: Click the remove button on an image to delete it (two-click confirmation)
 
 ### DNS Stats
-Display statistics from a self-hosted ad-blocking DNS resolver such as AdGuard Home, Pi-hole, or Technitium.
+Display statistics from a self-hosted ad-blocking DNS resolver such as AdGuard Home, Pi-hole, Technitium, or Blocky.
 
 Example:
 
@@ -2456,7 +2456,7 @@ Preview:
 
 > [!NOTE]
 >
-> When using AdGuard Home the 3rd statistic on top will be the average latency and when using Pi-hole or Technitium it will be the total number of blocked domains from all adlists.
+> When using AdGuard Home or Blocky the 3rd statistic on top will be the average latency and when using Pi-hole or Technitium it will be the total number of blocked domains from all adlists.
 
 #### Properties
 
@@ -2473,13 +2473,13 @@ Preview:
 | hour-format | string | no | 12h |
 
 ##### `service`
-Either `adguard`, `technitium`, or `pihole` (major version 5 and below) or `pihole-v6` (major version 6 and above).
+Either `adguard`, `technitium`, `blocky`, or `pihole` (major version 5 and below) or `pihole-v6` (major version 6 and above).
 
 ##### `allow-insecure`
 Whether to allow invalid/self-signed certificates when making the request to the service.
 
 ##### `url`
-The base URL of the service.
+The base URL of the service. When using Blocky, this should be the URL of the Prometheus server that scrapes Blocky's metrics (e.g. `http://prometheus:9090`), since Blocky does not have a built-in stats API.
 
 ##### `username`
 Only required when using AdGuard Home. The username used to log into the admin dashboard.
@@ -2498,7 +2498,7 @@ Also required when using Technitium, an API token can be generated at `Administr
 Whether to hide the graph showing the number of queries over time.
 
 ##### `hide-top-domains`
-Whether to hide the list of top blocked domains.
+Whether to hide the list of top blocked domains. Top blocked domains are not available when using Blocky.
 
 ##### `hour-format`
 Whether to display the relative time in the graph in `12h` or `24h` format.
