@@ -378,21 +378,29 @@ function setupLazyImages() {
     }
 }
 
-function getExpandedCollapsibleIndices(element) {
+function getCollapsibleContainerStates(element) {
     const allContainers = [...element.querySelectorAll('.collapsible-container')];
-    return allContainers
-        .map((c, i) => c.classList.contains('container-expanded') ? i : -1)
-        .filter(i => i !== -1);
+    return allContainers.map((container) => container.classList.contains('container-expanded'));
 }
 
-function restoreExpandedCollapsibles(element, expandedIndices) {
-    if (!expandedIndices.length) return;
+function restoreCollapsibleContainerStates(element, containerStates) {
+    if (!containerStates.length) return;
+
     const allContainers = [...element.querySelectorAll('.collapsible-container')];
-    for (const index of expandedIndices) {
+
+    for (let index = 0; index < containerStates.length; index++) {
         const container = allContainers[index];
         if (!container) continue;
+
         const button = container.nextElementSibling;
         if (button && button.classList.contains('expand-toggle-button')) {
+            const shouldBeExpanded = containerStates[index];
+            const isExpanded = container.classList.contains('container-expanded');
+
+            if (isExpanded === shouldBeExpanded) {
+                continue;
+            }
+
             container.classList.add('no-reveal-animation');
             button.click();
         }
@@ -905,7 +913,7 @@ async function updateWidget(widgetElement) {
 
     const refreshStartedAt = nowMs();
     const widgetTopBefore = widgetElement.getBoundingClientRect().top;
-    const expandedIndices = getExpandedCollapsibleIndices(widgetElement);
+    const collapsibleContainerStates = getCollapsibleContainerStates(widgetElement);
     const newWidget = await fetchWidgetContent(widgetElement);
 
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
@@ -947,7 +955,7 @@ async function updateWidget(widgetElement) {
                 cb();
             }
 
-            restoreExpandedCollapsibles(widgetElement, expandedIndices);
+            restoreCollapsibleContainerStates(widgetElement, collapsibleContainerStates);
             setupPlayingProgressUpdater();
             setupPlayingThumbnailCropping();
             notifyWidgetUpdated(widgetElement);
@@ -1324,7 +1332,7 @@ async function applyContentUpdate() {
     const tempContainers = Array.from(tempDiv.querySelectorAll(".head-widgets, .page-column"));
 
     let anyReplaced = false;
-    const expandedIndicesMap = new Map();
+    const collapsibleStatesMap = new Map();
     const updatedWidgets = [];
 
     for (let i = 0; i < Math.min(realContainers.length, tempContainers.length); i++) {
@@ -1335,7 +1343,7 @@ async function applyContentUpdate() {
             const realWidget = realWidgets[j];
             const tempWidget = tempWidgets[j];
 
-            expandedIndicesMap.set(realWidget, getExpandedCollapsibleIndices(realWidget));
+            collapsibleStatesMap.set(realWidget, getCollapsibleContainerStates(realWidget));
 
             if (realWidget.dataset.updateInterval && realWidget.outerHTML !== tempWidget.outerHTML) {
                 const oldContent = realWidget.querySelector('.widget-content');
@@ -1375,8 +1383,8 @@ async function applyContentUpdate() {
             cb();
         }
 
-        for (const [widget, indices] of expandedIndicesMap) {
-            restoreExpandedCollapsibles(widget, indices);
+        for (const [widget, states] of collapsibleStatesMap) {
+            restoreCollapsibleContainerStates(widget, states);
         }
 
         setupPlayingProgressUpdater();
@@ -1487,7 +1495,7 @@ function _applyWidgetUpdate(widgetId, html) {
     const target = document.querySelector(`.widget[data-widget-id="${widgetId}"]`);
     if (!target) return;
 
-    const expandedIndices = getExpandedCollapsibleIndices(target);
+    const collapsibleContainerStates = getCollapsibleContainerStates(target);
     const htmlElem = document.documentElement;
     const prevAnchor = htmlElem.style.overflowAnchor;
     htmlElem.style.overflowAnchor = 'none';
@@ -1501,8 +1509,8 @@ function _applyWidgetUpdate(widgetId, html) {
         setupCollapsibleLists();
         setupCollapsibleGrids();
 
-        if (expandedIndices?.length) {
-            restoreExpandedCollapsibles(liveTarget, expandedIndices);
+        if (collapsibleContainerStates?.length) {
+            restoreCollapsibleContainerStates(liveTarget, collapsibleContainerStates);
         }
 
         const lazyImages = liveTarget.querySelectorAll('img[loading=lazy]');

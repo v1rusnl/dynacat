@@ -89,18 +89,3 @@ jobs:
           else
             echo "is_latest=false" >> "${GITHUB_OUTPUT}"
           fi
-
-      - name: Export README.md from main branch
-        if: startsWith(github.ref, 'refs/tags/') && steps.latest_tag.outputs.is_latest == 'true' && env.DOCKERHUB_USERNAME != ''
-        run: |
-          git fetch origin main:refs/remotes/origin/main
-          git show origin/main:README.md > README.DOCKERHUB.md
-
-      - name: Update Docker Hub description from main README
-        if: startsWith(github.ref, 'refs/tags/') && steps.latest_tag.outputs.is_latest == 'true' && env.DOCKERHUB_USERNAME != ''
-        uses: peter-evans/dockerhub-description@v4
-        with:
-          username: ${{ env.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-          repository: ${{ env.DOCKERHUB_USER_LOWER }}/dynacat
-          readme-filepath: ./README.DOCKERHUB.md
