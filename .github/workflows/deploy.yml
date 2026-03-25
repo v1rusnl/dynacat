@@ -46,6 +46,16 @@ jobs:
           echo "ACTOR=$(echo ${GITHUB_ACTOR} | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
           echo "DOCKERHUB_USER_LOWER=$(echo '${{ env.DOCKERHUB_USERNAME }}' | tr '[:upper:]' '[:lower:]')" >> "${GITHUB_ENV}"
 
+      - name: Resolve app version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "APP_VERSION=${GITHUB_REF_NAME}" >> "${GITHUB_ENV}"
+          elif [[ "${GITHUB_REF}" == "refs/heads/beta" ]]; then
+            echo "APP_VERSION=beta-${GITHUB_SHA::7}" >> "${GITHUB_ENV}"
+          else
+            echo "APP_VERSION=dev" >> "${GITHUB_ENV}"
+          fi
+
       - name: Log in to GHCR
         uses: docker/login-action@v4
         with:
@@ -73,6 +83,8 @@ jobs:
           file: ./Dockerfile
           push: true
           platforms: linux/amd64,linux/arm64
+          build-args: |
+            APP_VERSION=${{ env.APP_VERSION }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -118,7 +130,8 @@ jobs:
           CGO_ENABLED: '0'
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
-        run: go build -o dynacat .
+          APP_VERSION: ${{ github.ref_name }}
+        run: go build -ldflags="-X github.com/Panonim/dynacat/internal/dynacat.buildVersion=${APP_VERSION}" -o dynacat .
 
       - name: Create tarball
         run: tar -czf dynacat-${{ matrix.goos }}-${{ matrix.goarch }}.tar.gz dynacat
