@@ -19,6 +19,9 @@ func Main() int {
 		return 1
 	}
 
+	// Resolve config path with fallback to glance.yml for backward compatibility
+	options.configPath = resolveConfigPath(options.configPath)
+
 	switch options.intent {
 	case cliIntentVersionPrint:
 		fmt.Println(buildVersion)
@@ -88,6 +91,28 @@ func Main() int {
 	}
 
 	return 0
+}
+
+// resolveConfigPath falls back to glance.yml if dynacat.yml (the default) doesn't exist,
+// for backward compatibility with legacy Glance configurations
+func resolveConfigPath(primaryPath string) string {
+	// user explicitly sets config
+	if primaryPath != "dynacat.yml" {
+		return primaryPath
+	}
+
+	// checks if dynacat.yml or glance.yml exists
+	if _, err := os.Stat("dynacat.yml"); err == nil {
+		return primaryPath
+	}
+
+	if _, err := os.Stat("glance.yml"); err == nil {
+		log.Println("Warning: Using legacy glance.yml config file. Please rename it to dynacat.yml to avoid deprecation issues.")
+		return "glance.yml"
+	}
+
+	// If neither exists, just return the original path
+	return primaryPath
 }
 
 func serveApp(configPath string) error {
