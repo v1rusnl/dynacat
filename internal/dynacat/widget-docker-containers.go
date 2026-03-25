@@ -119,16 +119,20 @@ func (l *dockerContainerLabels) getOrDefault(label, def string) string {
 		return def
 	}
 
-	v, ok := (*l)[label]
-	if !ok {
-		return def
+	if v, ok := (*l)[label]; ok && v != "" {
+		return v
 	}
 
-	if v == "" {
-		return def
+	// If the label is a dynacat key and the label is not found,
+	// try to find a glance key for backward compatibility with existing user configs
+	if strings.HasPrefix(label, "dynacat.") {
+		legacy := "glance." + strings.TrimPrefix(label, "dynacat.")
+		if v, ok := (*l)[legacy]; ok && v != "" {
+			return v
+		}
 	}
 
-	return v
+	return def
 }
 
 type dockerContainer struct {

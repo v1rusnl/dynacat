@@ -34,3 +34,15 @@
     height: 1.8rem;
     flex-shrink: 0;
 }
+
+.monitor-site-status-cluster-compact {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    flex-shrink: 0;
+}
+
+.monitor-site-response-time-compact {
+    white-space: nowrap;
+}

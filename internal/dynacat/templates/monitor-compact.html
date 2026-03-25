@@ -26,10 +26,10 @@
     <a class="size-title-dynamic color-highlight text-truncate block" href="{{ .URL | safeURL }}" {{ if not .SameTab }}target="_blank"{{ end }} rel="noreferrer">{{ .Title }}</a>
     {{- if .Description }}
     <div class="text-truncate size-h5">{{ .Description }}</div>
-    {{- else }}
-    <div class="text-truncate size-h5{{ if ne .StatusStyle "ok" }} color-negative{{ end }}">{{ .StatusLabel }} • {{ .Status.ResponseTime.Milliseconds | formatNumber }}ms</div>
     {{- end }}
 </div>
+<div class="monitor-site-status-cluster-compact">
+    <div class="size-h5 monitor-site-response-time-compact{{ if ne .StatusStyle "ok" }} color-negative{{ end }}">{{ .Status.ResponseTime.Milliseconds | formatNumber }}ms</div>
 {{ if eq .StatusStyle "ok" }}
 <div class="monitor-site-status-icon-compact" {{- if .Description }} data-popover-type="text" data-popover-position="above" data-popover-text="{{ if .Status.Error }}{{ .Status.Error }}{{ else }}{{ .StatusLabel }} • {{ .Status.ResponseTime.Milliseconds | formatNumber }}ms{{ end }}" aria-label="{{ .StatusLabel }}"{{ end }}>
     <svg fill="var(--color-positive)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20">
@@ -43,4 +43,5 @@
     </svg>
 </div>
 {{ end }}
+</div>
 {{ end }}

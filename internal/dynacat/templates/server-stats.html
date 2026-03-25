@@ -106,7 +106,7 @@
         <div class="flex-1{{ if not .Info.Mountpoints }} server-stat-unavailable{{ end }}">
             <div class="flex justify-between items-end size-h5">
                 <div>DISK</div>
-                <div class="color-highlight text-very-compact">{{ if .Info.Mountpoints }}{{ (index .Info.Mountpoints 0).UsedPercent }} <span class="color-base">%</span>{{ else }}n/a{{ end }}</div>
+                <div class="color-highlight text-very-compact">{{ if .Info.Mountpoints }}{{ .DiskUsedPercent }} <span class="color-base">%</span>{{ else }}n/a{{ end }}</div>
             </div>
             <div{{ if .Info.Mountpoints }} data-popover-type="html"{{ end }}>
                 {{- if .Info.Mountpoints }}
@@ -126,7 +126,7 @@
                 {{- end }}
                 <div class="progress-bar progress-bar-combined">
                     {{- if .Info.Mountpoints }}
-                    <div class="progress-value{{ if ge ((index .Info.Mountpoints 0).UsedPercent) 85 }} progress-value-notice{{ end }}" style="--percent: {{ (index .Info.Mountpoints 0).UsedPercent }}"></div>
+                    <div class="progress-value{{ if ge .DiskUsedPercent 85 }} progress-value-notice{{ end }}" style="--percent: {{ .DiskUsedPercent }}"></div>
                     {{- if ge (len .Info.Mountpoints) 2 }}
                     <div class="progress-value{{ if ge ((index .Info.Mountpoints 1).UsedPercent) 85 }} progress-value-notice{{ end }}" style="--percent: {{ (index .Info.Mountpoints 1).UsedPercent }}"></div>
                     {{- end }}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"html/template"
 	"log/slog"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -102,6 +103,27 @@ type serverStatsRequest struct {
 	Timeout                    durationField       `yaml:"timeout"`
 	// Support for other agents
 	// Provider                   string              `yaml:"provider"`
+}
+
+func (s *serverStatsRequest) DiskUsedPercent() uint8 {
+	if s == nil || s.Info == nil || len(s.Info.Mountpoints) == 0 {
+		return 0
+	}
+
+	var totalMB uint64
+	var usedMB uint64
+
+	for i := range s.Info.Mountpoints {
+		totalMB += s.Info.Mountpoints[i].TotalMB
+		usedMB += s.Info.Mountpoints[i].UsedMB
+	}
+
+	if totalMB == 0 {
+		return s.Info.Mountpoints[0].UsedPercent
+	}
+
+	usedPercent := (float64(usedMB) / float64(totalMB)) * 100
+	return uint8(math.Min(usedPercent, 100))
 }
 
 func fetchRemoteServerInfo(infoReq *serverStatsRequest) (*sysinfo.SystemInfo, error) {

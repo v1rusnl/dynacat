@@ -230,10 +230,39 @@ func (i *customIconField) cacheURL(cache *imageCache) {
 
 	cachedURL, err := cache.CacheURL(context.Background(), currentURL)
 	if err != nil || cachedURL == "" {
-		return
+		fallbackURL, hasFallback := dashboardIconWebpFallbackURL(currentURL)
+		if !hasFallback {
+			return
+		}
+
+		cachedURL, err = cache.CacheURL(context.Background(), fallbackURL)
+		if err != nil || cachedURL == "" {
+			return
+		}
 	}
 
 	i.URL = template.URL(cachedURL)
+}
+
+func dashboardIconWebpFallbackURL(rawURL string) (string, bool) {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return "", false
+	}
+
+	if !strings.EqualFold(parsed.Hostname(), "cdn.jsdelivr.net") {
+		return "", false
+	}
+
+	const dashboardIconsPrefix = "/gh/homarr-labs/dashboard-icons/svg/"
+	if !strings.HasPrefix(parsed.EscapedPath(), dashboardIconsPrefix) || !strings.HasSuffix(parsed.EscapedPath(), ".svg") {
+		return "", false
+	}
+
+	parsed.Path = strings.Replace(parsed.Path, "/dashboard-icons/svg/", "/dashboard-icons/webp/", 1)
+	parsed.Path = strings.TrimSuffix(parsed.Path, ".svg") + ".webp"
+
+	return parsed.String(), true
 }
 
 func (i *customIconField) UnmarshalYAML(node *yaml.Node) error {
