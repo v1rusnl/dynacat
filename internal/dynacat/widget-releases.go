@@ -25,6 +25,7 @@ type releasesWidget struct {
 	GitLabToken    string            `yaml:"gitlab-token"`
 	Limit          int               `yaml:"limit"`
 	CollapseAfter  int               `yaml:"collapse-after"`
+	NameOnly       bool              `yaml:"name-only"`
 	ShowSourceIcon bool              `yaml:"show-source-icon"`
 }
 
@@ -70,6 +71,10 @@ func (widget *releasesWidget) update(ctx context.Context) {
 
 	for i := range releases {
 		releases[i].SourceIconURL = widget.Providers.assetResolver("icons/" + string(releases[i].Source) + ".svg")
+
+		if widget.NameOnly {
+			releases[i].Name = releaseNameOnly(releases[i].Name)
+		}
 	}
 
 	widget.Releases = releases
@@ -77,6 +82,14 @@ func (widget *releasesWidget) update(ctx context.Context) {
 
 func (widget *releasesWidget) Render() template.HTML {
 	return widget.renderTemplate(widget, releasesWidgetTemplate)
+}
+
+func releaseNameOnly(name string) string {
+	if lastSlash := strings.LastIndex(name, "/"); lastSlash >= 0 && lastSlash < len(name)-1 {
+		return name[lastSlash+1:]
+	}
+
+	return name
 }
 
 type releaseSource string

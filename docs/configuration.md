@@ -2087,6 +2087,7 @@ Example:
 ```yaml
 - type: releases
   show-source-icon: true
+  name-only: true
   repositories:
     - go-gitea/gitea
     - jellyfin/jellyfin
@@ -2106,6 +2107,7 @@ Preview:
 | ---- | ---- | -------- | ------- |
 | repositories | array | yes |  |
 | show-source-icon | boolean | no | false |  |
+| name-only | boolean | no | false |
 | token | string | no | |
 | gitlab-token | string | no | |
 | limit | integer | no | 10 |
@@ -2152,6 +2154,9 @@ repositories:
 
 ##### `show-source-icon`
 Shows an icon of the source (GitHub/GitLab/Codeberg/Docker Hub) next to the repository name when set to `true`.
+
+##### `name-only`
+Shows only the repository or image name without the owner or organization when set to `true`. For example, `linuxserver/docker-homeassistant` will be shown as `docker-homeassistant`.
 
 ##### `token`
 Without authentication Github allows for up to 60 requests per hour. You can easily exceed this limit and start seeing errors if you're tracking lots of repositories or your cache time is low. To circumvent this you can [create a read only token from your Github account](https://github.com/settings/personal-access-tokens/new) and provide it here.
