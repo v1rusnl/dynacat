@@ -224,7 +224,7 @@ func serveUpdateNoticeIfConfigLocationNotMigrated(configPath string) bool {
 
 	fmt.Println("!!! WARNING !!!")
 	fmt.Println("The default location of dynacat.yml in the Docker image has changed starting from v0.7.0.")
-	fmt.Println("Please see https://github.com/Panonim/dynacat/blob/main/docs/v0.7.0-upgrade.md for more information.")
+	fmt.Println("Please see https://github.com/Panonim/dynacat/blob/main/docs/docs/installation.md#coming-from-glance for more information.")
 
 	mux := http.NewServeMux()
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))

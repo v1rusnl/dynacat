@@ -1,10 +1,4 @@
 # Docker Configuration & Options
-
-- [Environment Variables](#environment-variables)
-  - [LOG_LEVEL](#log_level)
-  - [BIND](#bind)
-- [Dynamic Refreshing](#dynamic-refreshing)
-
 ## Environment Variables
 
 Environment variables can be set in the `docker-compose.yml` file or through a `.env` file. These control runtime behavior of Dynacat without requiring changes to the configuration file.

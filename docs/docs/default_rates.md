@@ -15,7 +15,7 @@
 | Docker Containers | 2m |
 | Docker Controller | 30s |
 | DNS Stats | 10m |
-| Server Stats | 1ms |
+| Server Stats | 15s |
 | Repository | 3h |
 | Calendar (legacy) | 1h |
 | ChangeDetection.io | 30m |
@@ -26,4 +26,5 @@
 | External Integration | Default Update Interval |
 | --- | ---:|
 | Currently Playing | 30s |
-| Torrenting | 30 s |
+| Latest Media | 30m |
+| Torrenting | 30s |

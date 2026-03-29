@@ -8,3 +8,4 @@ docker-test/
 Makefile
 .claude/
 .cache/
+docs/scripts/
