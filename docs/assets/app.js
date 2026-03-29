@@ -697,7 +697,7 @@ function flashTermInScope(scope, term) {
   });
 
   const parts = needle.split(/\s+/).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-  const needleRegex = new RegExp(parts.join('\\s+'), 'g');
+  const needleRegex = new RegExp(parts.join('[\\W]+'), 'g');
   
   const matches = [];
   let match;
@@ -710,14 +710,16 @@ function flashTermInScope(scope, term) {
   const nodeChunks = new Map();
   textNodes.forEach(n => nodeChunks.set(n, []));
 
-  matches.forEach(m => {
+  matches.forEach((m, mi) => {
     nodeMetas.forEach(meta => {
       if (m.end <= meta.start || m.start >= meta.end) return;
       const startInNode = Math.max(0, m.start - meta.start);
       const endInNode = Math.min(meta.end - meta.start, m.end - meta.start);
-      nodeChunks.get(meta.node).push({ start: startInNode, end: endInNode });
+      nodeChunks.get(meta.node).push({ start: startInNode, end: endInNode, mi });
     });
   });
+
+  const matchGroups = new Map();
 
   for (const meta of nodeMetas) {
     const chunks = nodeChunks.get(meta.node);
@@ -738,6 +740,8 @@ function flashTermInScope(scope, term) {
       span.textContent = val.slice(c.start, c.end);
       frag.appendChild(span);
       highlights.push(span);
+      if (!matchGroups.has(c.mi)) matchGroups.set(c.mi, []);
+      matchGroups.get(c.mi).push(span);
       last = c.end;
     }
     if (last < val.length) {
@@ -747,7 +751,34 @@ function flashTermInScope(scope, term) {
     meta.node.parentNode.replaceChild(frag, meta.node);
   }
 
+  for (const [, spans] of matchGroups) {
+    if (spans.length <= 1) continue;
+    spans[0].classList.add('sh-first');
+    for (let i = 1; i < spans.length - 1; i++) {
+      spans[i].classList.add('sh-mid');
+    }
+    spans[spans.length - 1].classList.add('sh-last');
+  }
+
   return highlights;
+}
+
+function expandMatchingDetailsInScope(scope, terms) {
+  if (!scope || !terms || terms.length === 0) return;
+
+  scope.querySelectorAll('details:not([open])').forEach(detailsEl => {
+    const detailsText = normalizeHighlightPhrase(detailsEl.textContent || '');
+    if (!detailsText) return;
+
+    const hasMatch = terms.some(term => {
+      const parts = term.split(/\s+/).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+      const regex = new RegExp(parts.join('[\\W]+'));
+      return regex.test(detailsText);
+    });
+    if (hasMatch) {
+      detailsEl.open = true;
+    }
+  });
 }
 
 function getSectionSearchScopes(wrapper, hash) {
@@ -782,6 +813,11 @@ function flashSearchHighlight(container, hash, query) {
 
   const scopes = getSectionSearchScopes(container, hash);
 
+  // Expand collapsed details that contain the search term before highlighting.
+  scopes.forEach(scope => {
+    expandMatchingDetailsInScope(scope, terms);
+  });
+
   const allHighlights = [];
   for (const scope of scopes) {
     for (const term of terms) {
@@ -792,8 +828,8 @@ function flashSearchHighlight(container, hash, query) {
 
   if (allHighlights.length === 0) return false;
 
-  const HIGHLIGHT_LIFETIME_MS = 3000;
-  const HIGHLIGHT_FADEOUT_MS = 320;
+  const HIGHLIGHT_LIFETIME_MS = 3500;
+  const HIGHLIGHT_FADEOUT_MS = 480;
 
   // Start enter animation after paint so text is visible first.
   requestAnimationFrame(() => {
