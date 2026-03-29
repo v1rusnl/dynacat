@@ -2,6 +2,8 @@ FROM golang:1.24.3-alpine3.21 AS builder
 
 WORKDIR /app
 
+ARG APP_VERSION=dev
+
 # Copy dependency files first (better layer caching)
 COPY go.mod go.sum ./
 RUN --mount=type=cache,target=/go/pkg/mod \
@@ -13,7 +15,8 @@ COPY . .
 # Build with cache
 RUN --mount=type=cache,target=/go/pkg/mod \
     --mount=type=cache,target=/root/.cache/go-build \
-    CGO_ENABLED=0 go build .
+    CGO_ENABLED=0 go build \
+    -ldflags="-X github.com/Panonim/dynacat/internal/dynacat.buildVersion=${APP_VERSION}" .
 
 FROM alpine:3.21
 

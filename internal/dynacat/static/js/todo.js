@@ -214,12 +214,13 @@ function Todo(id, storageType, collapseAfterConfig) {
         for (let i = 0; i < items.children.length; i++) {
             const child = items.children[i];
             const isCollapsibleItem = i >= collapseAfter;
+            const wasCollapsibleItem = child.classList.contains("collapsible-item");
 
             child.classesIf(isCollapsibleItem, "collapsible-item");
 
-            if (isCollapsibleItem) {
+            if (isCollapsibleItem && !wasCollapsibleItem) {
                 child.style.animationDelay = ((i - collapseAfter) * 20).toString() + "ms";
-            } else {
+            } else if (!isCollapsibleItem) {
                 child.style.removeProperty("animation-delay");
             }
         }
@@ -227,6 +228,7 @@ function Todo(id, storageType, collapseAfterConfig) {
 
     const onDragEnd = () => {
         isDragging = false;
+        if (shouldCollapse) items.classList.add("no-reveal-animation");
         applyCollapsibleState();
     };
     const onDragStart = (event, element) => {
@@ -328,6 +330,7 @@ function Todo(id, storageType, collapseAfterConfig) {
             )
             .on("click", () => {
                 isExpanded = !isExpanded;
+                if (isExpanded) items.classList.remove("no-reveal-animation");
                 items.classesIf(isExpanded, "container-expanded");
                 expandButton.classesIf(isExpanded, "container-expanded");
                 expandButtonTextNode.nodeValue = isExpanded ? "Show less" : "Show more";
@@ -537,11 +540,9 @@ export function verticallyReorderable(itemsContainer, onItemRepositioned, onDrag
         });
 
         decoy.element.swapWith(element);
-        draggableContainer.element.append(decoy.element);
         draggableContainer.element.clearStyles("transform", "width");
 
         item.element = null;
-        decoy.element.remove();
 
         animate();
     }

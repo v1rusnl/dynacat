@@ -9,8 +9,11 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -47,6 +50,7 @@ const (
 	dnsServicePihole     = "pihole"
 	dnsServiceTechnitium = "technitium"
 	dnsServicePiholeV6   = "pihole-v6"
+	dnsServiceBlocky     = "blocky"
 )
 
 func makeDNSWidgetTimeLabels(format string) [8]string {
@@ -65,6 +69,8 @@ func (widget *dnsStatsWidget) initialize() error {
 	switch widget.Service {
 	case dnsServicePihole, dnsServicePiholeV6:
 		titleURL = titleURL + "/admin"
+	case dnsServiceBlocky:
+		// The URL points to the Prometheus server, not a Blocky admin UI.
 	}
 
 	widget.
@@ -82,8 +88,9 @@ func (widget *dnsStatsWidget) initialize() error {
 	case dnsServicePiholeV6:
 	case dnsServicePihole:
 	case dnsServiceTechnitium:
+	case dnsServiceBlocky:
 	default:
-		return fmt.Errorf("service must be one of: %s, %s, %s, %s", dnsServiceAdguard, dnsServicePihole, dnsServicePiholeV6, dnsServiceTechnitium)
+		return fmt.Errorf("service must be one of: %s, %s, %s, %s, %s", dnsServiceAdguard, dnsServicePihole, dnsServicePiholeV6, dnsServiceTechnitium, dnsServiceBlocky)
 	}
 
 	return nil
@@ -113,6 +120,8 @@ func (widget *dnsStatsWidget) update(ctx context.Context) {
 		if err == nil {
 			widget.piholeSessionID = newSessionID
 		}
+	case dnsServiceBlocky:
+		stats, err = fetchBlockyStats(ctx, widget.URL, widget.AllowInsecure, widget.HideGraph)
 	}
 
 	if !widget.canContinueUpdateAfterHandlingErr(err) {
@@ -822,4 +831,252 @@ func fetchTechnitiumStats(instanceUrl string, allowInsecure bool, token string, 
 	}
 
 	return stats, nil
+}
+
+type prometheusInstantResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		ResultType string `json:"resultType"`
+		Result     []struct {
+			Value [2]json.RawMessage `json:"value"`
+		} `json:"result"`
+	} `json:"data"`
+}
+
+type prometheusRangeResponse struct {
+	Status string `json:"status"`
+	Data   struct {
+		ResultType string `json:"resultType"`
+		Result     []struct {
+			Values [][2]json.RawMessage `json:"values"`
+		} `json:"result"`
+	} `json:"data"`
+}
+
+func extractInstantValue(resp prometheusInstantResponse) (float64, error) {
+	if resp.Status != "success" {
+		return 0, fmt.Errorf("prometheus query failed with status %q", resp.Status)
+	}
+	if len(resp.Data.Result) == 0 {
+		return 0, nil
+	}
+	var s string
+	if err := json.Unmarshal(resp.Data.Result[0].Value[1], &s); err != nil {
+		return 0, err
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, err
+	}
+	if math.IsNaN(v) {
+		return 0, nil
+	}
+	return v, nil
+}
+
+func extractRangeValues(resp prometheusRangeResponse) ([]float64, error) {
+	if resp.Status != "success" {
+		return nil, fmt.Errorf("prometheus query failed with status %q", resp.Status)
+	}
+	if len(resp.Data.Result) == 0 {
+		return nil, nil
+	}
+	pairs := resp.Data.Result[0].Values
+	result := make([]float64, len(pairs))
+	for i, pair := range pairs {
+		var s string
+		if err := json.Unmarshal(pair[1], &s); err != nil {
+			return nil, err
+		}
+		v, err := strconv.ParseFloat(s, 64)
+		if err != nil {
+			return nil, err
+		}
+		if math.IsNaN(v) {
+			v = 0
+		}
+		result[i] = v
+	}
+	return result, nil
+}
+
+func fetchBlockyStats(ctx context.Context, prometheusURL string, allowInsecure bool, noGraph bool) (*dnsStats, error) {
+	baseURL := strings.TrimRight(prometheusURL, "/")
+	client := ternary(allowInsecure, defaultInsecureHTTPClient, defaultHTTPClient)
+
+	fetchInstant := func(query string) (prometheusInstantResponse, error) {
+		reqURL := baseURL + "/api/v1/query?query=" + url.QueryEscape(query)
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if err != nil {
+			return prometheusInstantResponse{}, err
+		}
+		return decodeJsonFromRequest[prometheusInstantResponse](client, req)
+	}
+
+	var wg sync.WaitGroup
+	var totalResp, blockedResp, rtResp, domainsResp prometheusInstantResponse
+	var totalErr, blockedErr, rtErr, domainsErr error
+
+	wg.Add(4)
+	go func() {
+		defer wg.Done()
+		totalResp, totalErr = fetchInstant(`sum(increase(blocky_query_total[24h]))`)
+	}()
+	go func() {
+		defer wg.Done()
+		blockedResp, blockedErr = fetchInstant(`sum(increase(blocky_response_total{response_type="BLOCKED"}[24h]))`)
+	}()
+	go func() {
+		defer wg.Done()
+		rtResp, rtErr = fetchInstant(`sum(rate(blocky_request_duration_seconds_sum[5m]))/sum(rate(blocky_request_duration_seconds_count[5m]))`)
+	}()
+	go func() {
+		defer wg.Done()
+		domainsResp, domainsErr = fetchInstant(`sum(blocky_denylist_cache_entries)`)
+	}()
+	wg.Wait()
+
+	if totalErr != nil {
+		return nil, fmt.Errorf("fetching total queries: %v", totalErr)
+	}
+	if blockedErr != nil {
+		return nil, fmt.Errorf("fetching blocked queries: %v", blockedErr)
+	}
+
+	totalQueries, err := extractInstantValue(totalResp)
+	if err != nil {
+		return nil, fmt.Errorf("parsing total queries: %v", err)
+	}
+	blockedQueries, err := extractInstantValue(blockedResp)
+	if err != nil {
+		return nil, fmt.Errorf("parsing blocked queries: %v", err)
+	}
+
+	stats := &dnsStats{
+		TotalQueries:   max(0, int(totalQueries)),
+		BlockedQueries: max(0, int(blockedQueries)),
+	}
+	if totalQueries > 0 {
+		stats.BlockedPercent = min(100, int(math.Round(blockedQueries/totalQueries*100)))
+	}
+
+	partialContent := false
+
+	if rtErr != nil {
+		slog.Error("Failed to fetch Blocky response time", "error", rtErr)
+		partialContent = true
+	} else if rt, err := extractInstantValue(rtResp); err != nil {
+		slog.Error("Failed to parse Blocky response time", "error", err)
+		partialContent = true
+	} else if rt > 0 {
+		stats.ResponseTime = max(1, int(math.Round(rt*1000)))
+	}
+
+	if domainsErr != nil {
+		slog.Error("Failed to fetch Blocky domains blocked", "error", domainsErr)
+		partialContent = true
+	} else if domains, err := extractInstantValue(domainsResp); err != nil {
+		slog.Error("Failed to parse Blocky domains blocked", "error", err)
+		partialContent = true
+	} else {
+		stats.DomainsBlocked = max(0, int(domains))
+	}
+
+	if noGraph {
+		return stats, ternary(partialContent, errPartialContent, nil)
+	}
+
+	now := time.Now()
+	end := now.Unix()
+	// start is set so that step=dnsStatsHoursPerBar produces exactly dnsStatsBars points,
+	// each aligned with the time labels generated by makeDNSWidgetTimeLabels.
+	start := now.Add(-time.Duration(dnsStatsHoursSpan-dnsStatsHoursPerBar) * time.Hour).Unix()
+	stepStr := fmt.Sprintf("%dh", dnsStatsHoursPerBar)
+
+	fetchRange := func(query string) (prometheusRangeResponse, error) {
+		reqURL := fmt.Sprintf("%s/api/v1/query_range?query=%s&start=%d&end=%d&step=%s",
+			baseURL, url.QueryEscape(query), start, end, stepStr)
+		req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
+		if err != nil {
+			return prometheusRangeResponse{}, err
+		}
+		return decodeJsonFromRequest[prometheusRangeResponse](client, req)
+	}
+
+	var queriesRangeResp, blockedRangeResp prometheusRangeResponse
+	var queriesRangeErr, blockedRangeErr error
+
+	var wg2 sync.WaitGroup
+	wg2.Add(2)
+	go func() {
+		defer wg2.Done()
+		queriesRangeResp, queriesRangeErr = fetchRange(
+			fmt.Sprintf(`sum(increase(blocky_query_total[%s]))`, stepStr))
+	}()
+	go func() {
+		defer wg2.Done()
+		blockedRangeResp, blockedRangeErr = fetchRange(
+			fmt.Sprintf(`sum(increase(blocky_response_total{response_type="BLOCKED"}[%s]))`, stepStr))
+	}()
+	wg2.Wait()
+
+	if queriesRangeErr != nil {
+		slog.Error("Failed to fetch Blocky queries series", "error", queriesRangeErr)
+		return stats, errPartialContent
+	}
+	if blockedRangeErr != nil {
+		slog.Error("Failed to fetch Blocky blocked series", "error", blockedRangeErr)
+		return stats, errPartialContent
+	}
+
+	queriesValues, err := extractRangeValues(queriesRangeResp)
+	if err != nil {
+		slog.Error("Failed to parse Blocky queries series", "error", err)
+		return stats, errPartialContent
+	}
+	blockedValues, err := extractRangeValues(blockedRangeResp)
+	if err != nil {
+		slog.Error("Failed to parse Blocky blocked series", "error", err)
+		return stats, errPartialContent
+	}
+
+	// Trim to at most dnsStatsBars points, keeping the most recent.
+	if len(queriesValues) > dnsStatsBars {
+		queriesValues = queriesValues[len(queriesValues)-dnsStatsBars:]
+	}
+	if len(blockedValues) > dnsStatsBars {
+		blockedValues = blockedValues[len(blockedValues)-dnsStatsBars:]
+	}
+
+	// Right-align so that the newest data maps to Series[dnsStatsBars-1].
+	n := min(len(queriesValues), dnsStatsBars)
+	offset := dnsStatsBars - n
+
+	maxQueriesInSeries := 0.0
+	for i := range n {
+		if queriesValues[i] > maxQueriesInSeries {
+			maxQueriesInSeries = queriesValues[i]
+		}
+	}
+
+	for i := range n {
+		q := max(0, int(queriesValues[i]))
+		b := 0
+		if i < len(blockedValues) {
+			b = max(0, int(blockedValues[i]))
+		}
+		idx := offset + i
+		stats.Series[idx] = dnsStatsSeries{
+			Queries: q,
+			Blocked: b,
+		}
+		if q > 0 {
+			stats.Series[idx].PercentBlocked = int(float64(b) / float64(q) * 100)
+		}
+		if maxQueriesInSeries > 0 {
+			stats.Series[idx].PercentTotal = int(queriesValues[i] / maxQueriesInSeries * 100)
+		}
+	}
+
+	return stats, ternary(partialContent, errPartialContent, nil)
 }

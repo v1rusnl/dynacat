@@ -1,20 +1,21 @@
-<p align="center"><img width="250px" src="docs/logo.png"></p>
+<p align="center"><img width="250px" src="docs/docs/logo.png"></p>
 <h1 align="center">Dynacat</h1>
 <p align="center">
   <a href="#installation">Install</a> •
-  <a href="docs/configuration.md#configuring-dynacat">Configuration</a> •
+  <a href="https://dynacat.artur.zone/">Website</a> •
+  <a href="https://dynacat.artur.zone/#configuration">Configuration</a> •
   <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
   <a href="https://www.paypal.com/paypalme/imartur">Sponsor</a> 
 </p>
 <p align="center">
   <a href="https://github.com/glanceapp/community-widgets">Glance Community widgets</a> •
-  <a href="docs/preconfigured-pages.md">Preconfigured pages</a> •
-  <a href="docs/themes.md">Themes</a> 
+  <a href="docs/docs/preconfigured-pages.md">Preconfigured pages</a> •
+  <a href="docs/docs/themes.md">Themes</a> 
 </p>
 
 <p align="center">A glance fork that is focused on dynamic updates<br>and easy app integration without the need of writing your own widget's.</p>
 
-![](docs/images/readme-main-image.png)
+![](docs/docs/images/readme-main-image.png)
 
 ## Features
 ### Various widgets
@@ -28,7 +29,7 @@
 * Docker containers status
 * Server stats
 * Custom widgets
-* [and many more...](docs/configuration.md#configuring-dynacat)
+* [and many more...](docs/docs/configuration.md#configuring-dynacat)
 
 ### Fast and lightweight
 * Low memory usage
@@ -47,17 +48,17 @@
 ### Optimized for mobile devices
 Because you'll want to take it with you on the go.
 
-![](docs/images/mobile-preview.png)
+![](docs/docs/images/mobile-preview.png)
 
 ### Themeable
-Easily create your own theme by tweaking a few numbers or choose from one of the [already available themes](docs/themes.md).
+Easily create your own theme by tweaking a few numbers or choose from one of the [already available themes](docs/docs/themes.md).
 
-![](docs/images/themes-example.png)
+![](docs/docs/images/themes-example.png)
 
 <br>
 
 ## Configuration
-Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](docs/configuration.md#configuring-dynacat).
+Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](docs/docs/configuration.md#configuring-dynacat).
 
 <details>
 <summary><strong>Preview example configuration file</strong></summary>
@@ -226,10 +227,10 @@ services:
     env_file: .env
 ```
 
-Then, create a new directory called `config` and download the example starting [`dynacat.yml`](https://github.com/Panonim/dynacat/blob/main/docs/dynacat.yml) file into it by running:
+Then, create a new directory called `config` and download the example starting [`dynacat.yml`](https://github.com/Panonim/dynacat/blob/main/docs/docs/dynacat.yml) file into it by running:
 
 ```bash
-mkdir config && wget -O config/dynacat.yml https://raw.githubusercontent.com/Panonim/dynacat/refs/heads/main/docs/dynacat.yml
+mkdir config && wget -O config/dynacat.yml https://raw.githubusercontent.com/Panonim/dynacat/refs/heads/main/docs/docs/dynacat.yml
 ```
 
 Feel free to edit the `dynacat.yml` file to your liking, and when ready run:

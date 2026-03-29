@@ -1,0 +1,15 @@
+{
+  "nav": [
+    { "id": "home", "title": "Welcome" },
+    { "id": "search", "title": "Search", "file": "docs/search.md" },
+    { "section": "Reference" },
+    { "id": "configuration", "title": "Configuration", "file": "docs/configuration.md" },
+    { "id": "custom-api", "title": "Custom API", "file": "docs/custom-api.md" },
+    { "id": "default-rates", "title": "Default Update Rates", "file": "docs/default_rates.md" },
+    { "id": "docker-options", "title": "Docker Options", "file": "docs/docker-options.md" },
+    { "id": "extensions", "title": "Extensions", "file": "docs/extensions.md" },
+    { "id": "installation", "title": "Installation", "file": "docs/installation.md" },
+    { "id": "preconfigured-pages", "title": "Preconfigured Pages", "file": "docs/preconfigured-pages.md" },
+    { "id": "themes", "title": "Themes", "file": "docs/themes.md" }
+  ]
+}

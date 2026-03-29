@@ -947,6 +947,7 @@ async function updateWidget(widgetElement) {
             setupCollapsibleGrids();
             setupGroups();
             setupMasonries();
+            setupDynamicRelativeTime();
             setupLazyImages();
             setupTruncatedElementTitles();
 

@@ -36,24 +36,6 @@ The `update-interval` property accepts a number followed by a time unit:
 - Each widget with an `update-interval` polls independently, allowing different widgets to update at different rates.
 - Returning to a hidden tab does not force an immediate refresh unless the widget's `update-interval` elapsed while hidden.
 
-### Error Handling
-
-If you use an invalid format, Dynacat will log an error and fail to start. Common mistakes:
-
-❌ Invalid:
-```yaml
-update-interval: 5      # Missing time unit
-update-interval: 1d     # Days not supported
-update-interval:        # Empty value
-```
-
-✅ Valid:
-```yaml
-update-interval: 30s    # 30 seconds
-update-interval: 5m     # 5 minutes
-update-interval: 2h     # 2 hours
-```
-
 ## Examples
 
 The best way to get an idea of how the templates work would be with a bunch examples. Here are the most common use cases:
