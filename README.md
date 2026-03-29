@@ -2,7 +2,8 @@
 <h1 align="center">Dynacat</h1>
 <p align="center">
   <a href="#installation">Install</a> •
-  <a href="docs/docs/configuration.md#configuring-dynacat">Configuration</a> •
+  <a href="https://dynacat.artur.zone/">Website</a> •
+  <a href="https://dynacat.artur.zone/#configuration">Configuration</a> •
   <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
   <a href="https://www.paypal.com/paypalme/imartur">Sponsor</a> 
 </p>
