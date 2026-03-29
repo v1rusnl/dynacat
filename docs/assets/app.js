@@ -289,8 +289,17 @@ overlayEl.addEventListener('click', closeSidebar);
 
 let touchStartX = null;
 let touchStartY = null;
-const TOUCH_EDGE_OFFSET = 28;
+const TOUCH_EDGE_OPEN_RATIO = 0.25;
+const MIN_TOUCH_EDGE_OPEN_WIDTH = 28;
 const MIN_SWIPE_DISTANCE = 60;
+
+function isMobileSidebarMode() {
+  return window.matchMedia('(max-width: 768px)').matches;
+}
+
+function getTouchEdgeOpenWidth() {
+  return Math.max(MIN_TOUCH_EDGE_OPEN_WIDTH, window.innerWidth * TOUCH_EDGE_OPEN_RATIO);
+}
 
 document.addEventListener('touchstart', e => {
   if (e.touches.length !== 1) return;
@@ -304,8 +313,9 @@ document.addEventListener('touchmove', e => {
   const { clientX, clientY } = e.touches[0];
   const dx = clientX - touchStartX;
   const dy = clientY - touchStartY;
+  const touchEdgeOpenWidth = getTouchEdgeOpenWidth();
 
-  if (touchStartX <= TOUCH_EDGE_OFFSET && dx > MIN_SWIPE_DISTANCE && Math.abs(dy) < 40) {
+  if (isMobileSidebarMode() && touchStartX <= touchEdgeOpenWidth && dx > MIN_SWIPE_DISTANCE && Math.abs(dy) < 40) {
     openSidebar();
     touchStartX = null;
     touchStartY = null;
@@ -872,14 +882,9 @@ function buildFloatingToc(wrapper) {
 
   const tocEntries = headingCandidates
     .map(heading => {
-      const label = heading.childNodes.length
-        ? [...heading.childNodes]
-            .filter(node => !(node.nodeType === 1 && node.classList && node.classList.contains('heading-link')))
-            .map(node => node.textContent || '')
-            .join(' ')
-            .trim()
-            .replace(/\s+/g, ' ')
-        : heading.textContent.trim();
+      const headingClone = heading.cloneNode(true);
+      headingClone.querySelectorAll('.heading-link, code').forEach(node => node.remove());
+      const label = (headingClone.textContent || '').trim().replace(/\s+/g, ' ');
 
       return {
         id: heading.id,
@@ -887,7 +892,17 @@ function buildFloatingToc(wrapper) {
         level: Number(heading.tagName.slice(1)),
       };
     })
-    .filter(entry => entry.id && entry.label);
+    .filter(entry => {
+      if (!entry.id || !entry.label) return false;
+
+      const normalizedLabel = entry.label.toLowerCase();
+      // Skip repetitive subheadings that add noise in long config docs.
+      if (normalizedLabel === 'properties' || normalizedLabel.startsWith('properties for ')) {
+        return false;
+      }
+
+      return true;
+    });
 
   if (tocEntries.length <= 1) return;
 
