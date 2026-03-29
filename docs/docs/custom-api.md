@@ -1,5 +1,3 @@
-[Jump to function definitions](#functions)
-
 ## Update Intervals
 
 Custom API widgets support configurable client-side update intervals using the `update-interval` property. This controls how often the browser fetches new data from the server for the widget.
