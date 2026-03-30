@@ -1517,8 +1517,19 @@ body {
   vertical-align: top;
 }
 
+.md-content th p,
+.md-content td p {
+  margin: 0;
+}
+
+.md-content th :where(a, strong, em, code, span),
+.md-content td :where(a, strong, em, code, span) {
+  font-size: inherit;
+  line-height: inherit;
+}
+
 .md-content td code {
-  font-size: 12.5px;
+  font-size: inherit;
 }
 
 .md-content tr:last-child td { border-bottom: none; }

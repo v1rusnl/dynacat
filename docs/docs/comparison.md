@@ -7,18 +7,18 @@
 | Single binary deployment (<20 MB) | ✓ | ✓ |
 | Low memory footprint | ✓ | ✓ |
 | Minimal vanilla JS | ✓ | ✓ |
-| Fast initial page load (~1s uncached) | ✓ | ✖ |
-| HTMX-powered partial page updates | ✓ | ✖ |
-| Server-side asset proxying & caching | ✓ | ✖ |
+| Fast initial page load (~1s uncached) | ✓ | ⛌ |
+| HTMX-powered partial page updates | ✓ | ⛌ |
+| Server-side asset proxying & caching | ✓ | ⛌ |
 
 
 ## Dynamic Updates
 
 | Feature | Dynacat | Glance |
 |---|:---:|:---:|
-| Background widget refresh| ✓ | ✖ |
+| Background widget refresh| ✓ | ⛌ |
 | Per-widget configurable update intervals | ✓ | ✓ |
-| Only updated widget HTML is swapped | ✓ | ✖ |
+| Only updated widget HTML is swapped | ✓ | ⛌ |
 
 
 ## Data & Caching
@@ -26,9 +26,9 @@
 | Feature | Dynacat | Glance |
 |---|:---:|:---:|
 | Per-widget cache duration configuration | ✓ | ✓ |
-| Server-side image/asset caching (API keys never exposed to browser) | ✓ | ✖ |
-| API keys are never exposed to browser | ✓ | ✖ |
-| Persistent data storage (SQLite) | ✓ | ✖ |
+| Server-side image/asset caching (API keys never exposed to browser) | ✓ | ⛌ |
+| API keys are never exposed to browser | ✓ | ⛌ |
+| Persistent data storage (SQLite) | ✓ | ⛌ |
 | Config hot-reload (no restart needed) | ✓ | ✓ |
 | Multi-file config composition (`$include`) | ✓ | ✓ |
 
@@ -41,7 +41,7 @@
 | Weather, calendar & market data | ✓ | ✓ |
 | Container management & monitoring | ✓ | ✓ |
 | Server resource monitoring | ✓ | ✓ |
-| External integrations (e.g. Plex, qBitorrent) | ✓ | ✖ |
+| External integrations (e.g. Plex, qBitorrent) | ✓ | ⛌ |
 | Custom API widget with concurrent subrequests | ✓ | ✓ |
 | Third-party / extension widgets | ✓ | ✓ |
 | Self-hosted icon & asset serving | ✓ | ✓ |
@@ -55,7 +55,7 @@
 | Environment variable injection in config | ✓ | ✓ |
 | Docker secrets support (`${secret:name}`) | ✓ | ✓ |
 | File-based token loading (`${readFileFromEnv:...}`) | ✓ | ✓ |
-| API keys proxied server-side (never sent to browser) | ✓ | ✖ |
+| API keys proxied server-side (never sent to browser) | ✓ | ⛌ |
 | Docker Compose deployment | ✓ | ✓ |
 
 
@@ -63,10 +63,10 @@
 
 | | Dynacat | Glance |
 |---|:---:|:---:|
-| **Live background updates** | ✓ | ✖ |
-| **Server-side security proxying** | ✓ | ✖ |
-| **External integrations** | ✓ | ✖ |
-| **Persistent storage** | ✓ | ✖ |
+| **Live background updates** | ✓ | ⛌ |
+| **Server-side security proxying** | ✓ | ⛌ |
+| **External integrations** | ✓ | ⛌ |
+| **Persistent storage** | ✓ | ⛌ |
 | **PWA / installable app** | ✓ | ✓ |
 | **Lightweight self-hosted binary** | ✓ | ✓ |
 
