@@ -66,8 +66,8 @@
 | **Live background updates** | ✓ | ✖ |
 | **Server-side security proxying** | ✓ | ✖ |
 | **External integrations** | ✓ | ✖ |
-| **PWA / installable app** | ✓ | ✖ |
 | **Persistent storage** | ✓ | ✖ |
+| **PWA / installable app** | ✓ | ✓ |
 | **Lightweight self-hosted binary** | ✓ | ✓ |
 
 <br>
