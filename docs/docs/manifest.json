@@ -1,6 +1,7 @@
 {
   "nav": [
     { "id": "home", "title": "Welcome" },
+    { "id": "comparison", "title": "Comparison", "file": "docs/comparison.md" },
     { "id": "search", "title": "Search", "file": "docs/search.md" },
     { "section": "Reference" },
     { "id": "configuration", "title": "Configuration", "file": "docs/configuration.md" },

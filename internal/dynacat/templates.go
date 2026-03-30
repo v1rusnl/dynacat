@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"math"
 	"strconv"
+	"strings"
 
 	"golang.org/x/text/language"
 	"golang.org/x/text/message"
@@ -15,6 +16,9 @@ var intl = message.NewPrinter(language.English)
 var globalTemplateFunctions = template.FuncMap{
 	"formatApproxNumber": formatApproxNumber,
 	"formatNumber":       intl.Sprint,
+	"containsStr": func(str, substr string) bool {
+		return strings.Contains(str, substr)
+	},
 	"safeCSS": func(str string) template.CSS {
 		return template.CSS(str)
 	},

@@ -245,7 +245,7 @@ server:
 | port | number | no | 8080 |
 | proxied | boolean | no | false |
 | base-url | string | no | |
-| assets-path | string | no | |
+| assets-path | string | no | /app/assets |
 | cache-dir | string | no | .cache |
 | db-path | string | no | /app/assets/dynacat.db |
 
@@ -266,7 +266,7 @@ The base URL that Dynacat is hosted under. No need to specify this unless you're
 > In Caddy you can do this using [`handle_path`](https://caddyserver.com/docs/caddyfile/directives/handle_path) or [`uri strip_prefix`](https://caddyserver.com/docs/caddyfile/directives/uri).
 
 #### `assets-path`
-The path to a directory that will be served by the server under the `/assets/` path. This is handy for widgets like the Monitor where you have to specify an icon URL and you want to self host all the icons rather than pointing to an external source.
+The path to a directory that will be served by the server under the `/assets/` path. This is handy for widgets like the Monitor where you have to specify an icon URL and you want to self host all the icons rather than pointing to an external source. Defaults to `/app/assets`.
 
 > [!IMPORTANT]
 >

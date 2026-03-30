@@ -130,6 +130,7 @@ body {
     color: var(--color-text-base);
     background-color: var(--color-background);
     overflow-y: scroll;
+    overflow-x: hidden;
 }
 
 .page-column-small {
@@ -302,8 +303,15 @@ kbd:active {
 .footer {
     padding-bottom: calc(var(--widget-gap) * 1.5);
     padding-top: calc(var(--widget-gap) / 2);
+    opacity: 0;
+    visibility: hidden;
+}
+
+.footer.content-ready {
     animation: loadingContainerEntrance 200ms backwards;
     animation-delay: 150ms;
+    opacity: 1;
+    visibility: visible;
 }
 
 .mobile-navigation, .mobile-reachability-header {

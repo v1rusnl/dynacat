@@ -868,6 +868,11 @@ async function setupPage() {
         pageElement.classList.add("content-ready");
         pageElement.setAttribute("aria-busy", "false");
 
+        const footerElement = document.querySelector("footer.footer");
+        if (footerElement) {
+            footerElement.classList.add("content-ready");
+        }
+
         for (let i = 0; i < contentReadyCallbacks.length; i++) {
             contentReadyCallbacks[i]();
         }

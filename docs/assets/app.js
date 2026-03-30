@@ -112,6 +112,7 @@ function rebuildSearchIndex() {
 let currentPage = 'home';
 let forceInstantScroll = false;
 let navigationRequestId = 0;
+let isHomeCursorTrackingActive = false;
 
 const docCache = new Map();
 const pendingDocLoads = new Map();
@@ -394,6 +395,48 @@ function setActiveNav(pageId) {
   });
 }
 
+function handleHomeCursorMove(e) {
+  const leftEye = document.getElementById('eye-left');
+  const rightEye = document.getElementById('eye-right');
+  if (!leftEye || !rightEye) return;
+
+  const wrapper = leftEye.parentElement;
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+  const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2;
+
+  // Calculate angle from wrapper center to cursor
+  const deltaX = e.clientX - wrapperCenterX;
+  const deltaY = e.clientY - wrapperCenterY;
+  const angle = Math.atan2(deltaY, deltaX);
+
+  // Both eyes look at same angle, but movement is limited
+  const maxDist = 8;
+  const dist = Math.min(maxDist, Math.hypot(deltaX, deltaY) / 50);
+
+  const moveX = Math.cos(angle) * dist;
+  const moveY = Math.sin(angle) * dist;
+
+  // Both eyes move together in the same direction
+  leftEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
+  rightEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
+}
+
+function setHomeCursorTracking(enabled) {
+  if (enabled) {
+    if (!isHomeCursorTrackingActive) {
+      document.addEventListener('mousemove', handleHomeCursorMove);
+      isHomeCursorTrackingActive = true;
+    }
+    return;
+  }
+
+  if (isHomeCursorTrackingActive) {
+    document.removeEventListener('mousemove', handleHomeCursorMove);
+    isHomeCursorTrackingActive = false;
+  }
+}
+
 async function navigateTo(pageId, hash, skipPushState) {
   const requestId = ++navigationRequestId;
 
@@ -407,6 +450,7 @@ async function navigateTo(pageId, hash, skipPushState) {
     document.title = 'Page Not Found - Dynacat';
     const mainContainer = document.querySelector('.main');
     if (mainContainer) mainContainer.classList.remove('is-home');
+    setHomeCursorTracking(false);
     if (!skipPushState) {
       history.pushState({ pageId: unknownPageId }, '', `#${unknownPageId}`);
     }
@@ -423,7 +467,9 @@ async function navigateTo(pageId, hash, skipPushState) {
 
   // Toggle home-specific layout (hide topbar, full-width)
   const mainContainer = document.querySelector('.main');
-  if (mainContainer) mainContainer.classList.toggle('is-home', pageId === 'home');
+  const isHomePage = pageId === 'home';
+  if (mainContainer) mainContainer.classList.toggle('is-home', isHomePage);
+  setHomeCursorTracking(isHomePage);
 
   if (!skipPushState) {
     const newHash = pageId === 'home'
@@ -534,7 +580,11 @@ function processCallouts(container) {
 
     const markerPattern = /^\s*\[!([A-Z0-9_-]+)\]\s*/i;
     const match = firstP.innerHTML.match(markerPattern);
-    if (!match) return;
+    if (!match) {
+      bq.classList.add('callout', 'callout-quote');
+      bq.dataset.calloutType = 'quote';
+      return;
+    }
 
     const rawType = match[1];
     const normalizedType = rawType.toLowerCase().replace(/_/g, '-');
@@ -1762,29 +1812,3 @@ window.addEventListener('popstate', () => {
 const { pageId: initPage, hash: initHash } = parseLocationHash();
 loadManifest().then(() => navigateTo(initPage, initHash, true));
 
-document.addEventListener('mousemove', (e) => {
-  const leftEye = document.getElementById('eye-left');
-  const rightEye = document.getElementById('eye-right');
-  if (!leftEye || !rightEye) return;
-
-  const wrapper = leftEye.parentElement;
-  const wrapperRect = wrapper.getBoundingClientRect();
-  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
-  const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2;
-
-  // Calculate angle from wrapper center to cursor
-  const deltaX = e.clientX - wrapperCenterX;
-  const deltaY = e.clientY - wrapperCenterY;
-  const angle = Math.atan2(deltaY, deltaX);
-
-  // Both eyes look at same angle, but movement is limited
-  const maxDist = 8;
-  const dist = Math.min(maxDist, Math.hypot(deltaX, deltaY) / 50);
-
-  const moveX = Math.cos(angle) * dist;
-  const moveY = Math.sin(angle) * dist;
-
-  // Both eyes move together in the same direction
-  leftEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
-  rightEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
-});

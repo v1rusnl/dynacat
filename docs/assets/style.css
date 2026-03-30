@@ -81,6 +81,9 @@
   --callout-danger-border:rgba(239, 68, 68, 0.25);
   --callout-danger-text:  #F87171;
 
+  --callout-quote-bg:     rgba(148, 163, 184, 0.08);
+  --callout-quote-border: rgba(148, 163, 184, 0.28);
+
   --sidebar-width:  252px;
   --topbar-height:  52px;
   --content-max:    800px;
@@ -132,6 +135,9 @@
   --callout-danger-bg:    rgba(220, 38, 38, 0.06);
   --callout-danger-border:rgba(220, 38, 38, 0.3);
   --callout-danger-text:  #DC2626;
+
+  --callout-quote-bg:     rgba(100, 116, 139, 0.10);
+  --callout-quote-border: rgba(100, 116, 139, 0.30);
 }
 
 /* ─── Scrollbars ─────────────────────────────────────────────────────────── */
@@ -1630,6 +1636,11 @@ body {
   border-color: var(--callout-danger-border);
 }
 .callout-important .callout-title { color: var(--callout-danger-text); }
+
+.callout-quote {
+  background: var(--callout-quote-bg);
+  border-color: var(--callout-quote-border);
+}
 
 /* ─── Floating TOC ───────────────────────────────────────────────────────── */
 
