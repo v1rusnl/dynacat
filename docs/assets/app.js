@@ -239,6 +239,8 @@ function buildNavFallback() {
 }
 
 function rebuildSearchIndex() {
+  docCache.clear();
+  allDocsPromise = null;
   SEARCHABLE_PAGE_IDS = Object.keys(DOC_PATHS);
 
   const lookup = new Map();
@@ -963,7 +965,22 @@ function getSectionSearchScopes(wrapper, hash) {
   return [...sectionNodes, wrapper];
 }
 
-function flashSearchHighlight(container, hash, query) {
+function findSnippetHighlight(highlights, snippet) {
+  if (!snippet || highlights.length <= 1) return highlights[0];
+
+  const normalizedSnippet = snippet.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 80);
+
+  for (const h of highlights) {
+    const block = h.closest('p, li, td, blockquote, pre, div, dt, dd, h1, h2, h3, h4, h5, h6');
+    if (!block) continue;
+    const blockText = block.textContent.toLowerCase().replace(/\s+/g, ' ').trim();
+    if (blockText.includes(normalizedSnippet)) return h;
+  }
+
+  return highlights[0];
+}
+
+function flashSearchHighlight(container, hash, query, snippet) {
   if (!container) return false;
 
   clearSearchHighlights(container);
@@ -984,6 +1001,28 @@ function flashSearchHighlight(container, hash, query) {
 
   const HIGHLIGHT_LIFETIME_MS = 3000;
   const HIGHLIGHT_FADEOUT_MS = 320;
+
+  // Scroll to the highlight matching the selected result's snippet.
+  const scrollTarget = findSnippetHighlight(allHighlights, snippet);
+  scrollToElementFast(scrollTarget);
+
+  // Images (and other late-loading content) above the target may not be laid out yet,
+  // causing getBoundingClientRect() to undercount the scroll distance.
+  // Re-scroll after images load (with an rAF to ensure reflow) and again at 600ms
+  // as a catch-all for fonts, syntax highlighting, and other layout shifts.
+  const reScroll = () => requestAnimationFrame(() => {
+    if (scrollTarget.isConnected) scrollToElementFast(scrollTarget, { instant: true });
+  });
+
+  const pendingImages = [...container.querySelectorAll('img')].filter(img => !img.complete);
+  if (pendingImages.length > 0) {
+    Promise.all(pendingImages.map(img => new Promise(r => {
+      img.addEventListener('load', r, { once: true });
+      img.addEventListener('error', r, { once: true });
+    }))).then(reScroll);
+  }
+
+  setTimeout(reScroll, 600);
 
   // Start enter animation after paint so text is visible first.
   requestAnimationFrame(() => {
@@ -1682,16 +1721,14 @@ async function renderHome() {
 
 /* ─── Search ─────────────────────────────────────────────────────────────── */
 
-const PAGE_NAMES = {
-  configuration: 'Configuration',
-  'docker-options': 'Docker Options',
-  themes: 'Themes',
-  'preconfigured-pages': 'Preconfigured Pages',
-  'custom-api': 'Custom API',
-  extensions: 'Extensions',
-  'default-rates': 'Default Update Rates',
-  search: 'Search',
-};
+const PAGE_NAMES = new Proxy({}, {
+  get(_, pageId) {
+    return (PAGES[pageId] && (PAGES[pageId].title || PAGES[pageId].label)) || undefined;
+  },
+  has(_, pageId) {
+    return pageId in PAGES;
+  },
+});
 
 let SEARCHABLE_PAGE_IDS = [];
 
@@ -1872,7 +1909,7 @@ async function renderSearchResults(query) {
   }
 
   searchResultsEl.innerHTML = results.map((r, index) => `
-    <button class="search-result" data-page="${r.pageId}" data-hash="${escapeHtml(r.headingId || '')}" data-result-index="${index}">
+    <button class="search-result" data-page="${r.pageId}" data-hash="${escapeHtml(r.headingId || '')}" data-snippet="${escapeHtml(r.snippet)}" data-result-index="${index}">
       <div class="sr-page">${escapeHtml(r.pageName)}</div>
       <div class="sr-heading">${escapeHtml(r.heading)}</div>
       <div class="sr-snippet">${parsedQuery.textQuery ? highlightMatch(r.snippet, parsedQuery.textQuery) : escapeHtml(r.snippet)}</div>
@@ -1885,14 +1922,17 @@ async function renderSearchResults(query) {
       forceInstantScroll = true;
 
       const targetHash = el.dataset.hash || null;
+      const targetSnippet = el.dataset.snippet || '';
 
       await navigateTo(el.dataset.page, targetHash);
-      await new Promise(resolve => requestAnimationFrame(resolve));
+      // Wait for navigateTo's internal setTimeout(80) heading scroll to fire first,
+      // so our scroll to the matched text wins.
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const wrapper = contentEl.querySelector('.md-content');
       const rawQuery = query || '';
       if (targetHash) setFloatingTocActive(targetHash);
-      flashSearchHighlight(wrapper, targetHash, rawQuery);
+      flashSearchHighlight(wrapper, targetHash, rawQuery, targetSnippet);
       searchInputEl.value = '';
     });
   });
