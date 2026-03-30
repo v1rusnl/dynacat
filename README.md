@@ -1,16 +1,16 @@
 <p align="center"><img width="250px" src="docs/docs/logo.png"></p>
 <h1 align="center">Dynacat</h1>
 <p align="center">
-  <a href="#installation">Install</a> •
   <a href="https://dynacat.artur.zone/">Website</a> •
-  <a href="https://dynacat.artur.zone/#configuration">Configuration</a> •
+  <a href="https://dynacat.artur.zone/configuration">Configuration</a> •
   <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
   <a href="https://www.paypal.com/paypalme/imartur">Sponsor</a> 
 </p>
 <p align="center">
   <a href="https://github.com/glanceapp/community-widgets">Glance Community widgets</a> •
-  <a href="docs/docs/preconfigured-pages.md">Preconfigured pages</a> •
-  <a href="docs/docs/themes.md">Themes</a> 
+  <a href="https://dynacat.artur.zone/installation">Install</a> •  
+  <a href="https://dynacat.artur.zone/preconfigured-pages">Preconfigured pages</a> •
+  <a href="https://dynacat.artur.zone/themes">Themes</a> 
 </p>
 
 <p align="center">A glance fork that is focused on dynamic updates<br>and easy app integration without the need of writing your own widget's.</p>
@@ -29,7 +29,7 @@
 * Docker containers status
 * Server stats
 * Custom widgets
-* [and many more...](docs/docs/configuration.md#configuring-dynacat)
+* [and many more...](https://dynacat.artur.zone/configuration#configuring-dynacat)
 
 ### Fast and lightweight
 * Low memory usage
@@ -51,14 +51,14 @@ Because you'll want to take it with you on the go.
 ![](docs/docs/images/mobile-preview.png)
 
 ### Themeable
-Easily create your own theme by tweaking a few numbers or choose from one of the [already available themes](docs/docs/themes.md).
+Easily create your own theme by tweaking a few numbers or choose from one of the [already available themes](https://dynacat.artur.zone/themes).
 
 ![](docs/docs/images/themes-example.png)
 
 <br>
 
 ## Configuration
-Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](docs/docs/configuration.md#configuring-dynacat).
+Configuration is done through YAML files, to learn more about how the layout works, how to add more pages and how to configure widgets, visit the [configuration documentation](https://dynacat.artur.zone/configuration#configuring-dynacat).
 
 <details>
 <summary><strong>Preview example configuration file</strong></summary>
@@ -150,113 +150,6 @@ Configuration is done through YAML files, to learn more about how the layout wor
 ```
 </details>
 
-<br>
-
-## Installation
-
-Choose one of the following methods:
-
-<details>
-<summary><strong>Docker compose using provided directory structure (recommended)</strong></summary>
-<br>
-
-Create a new directory called `dynacat` as well as the template files within it by running:
-
-```bash
-mkdir dynacat && cd dynacat && \
-curl -sL https://github.com/glanceapp/docker-compose-template/archive/refs/heads/main.tar.gz | tar -xzf - --strip-components 2 && \
-sed -i \
-  -e 's/^  glance:/  dynacat:/' \
-  -e 's/^    container_name: glance/    container_name: dynacat/' \
-  -e 's/^    image: glanceapp\/glance/    image: panonim\/dynacat/' \
-  docker-compose.yml && \
-mv config/glance.yml config/dynacat.yml
-```
-
-**NOTE: Remember to keep the command exactly as-is; otherwise, the image won't work.**
-
-*[click here to view the files that will be created](https://github.com/glanceapp/docker-compose-template/tree/main/root)*
-
-Then, edit the following files as desired:
-* `docker-compose.yml` to configure the port, volumes and other containery things
-* `config/home.yml` to configure the widgets or layout of the home page
-* `config/dynacat.yml` if you want to change the theme or add more pages
-
-<details>
-<summary>Other files you may want to edit</summary>
-
-* `.env` to configure environment variables that will be available inside configuration files
-* `assets/user.css` to add custom CSS
-</details>
-
-When ready, run:
-
-```bash
-docker compose up -d
-```
-
-If you encounter any issues, you can check the logs by running:
-
-```bash
-docker compose logs
-```
-
-<hr>
-</details>
-
-<details>
-<summary><strong>Docker compose manual</strong></summary>
-<br>
-
-Create a `docker-compose.yml` file with the following contents:
-
-```yaml
-services:
-  dynacat:
-    container_name: dynacat
-    image: panonim/dynacat
-    restart: unless-stopped
-    volumes:
-      - ./config:/app/config
-      - ./assets:/app/assets
-      - /etc/localtime:/etc/localtime:ro
-      # Optionally, also mount docker socket if you want to use the docker containers widget
-      # - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - 8080:8080
-    env_file: .env
-```
-
-Then, create a new directory called `config` and download the example starting [`dynacat.yml`](https://github.com/Panonim/dynacat/blob/main/docs/docs/dynacat.yml) file into it by running:
-
-```bash
-mkdir config && wget -O config/dynacat.yml https://raw.githubusercontent.com/Panonim/dynacat/refs/heads/main/docs/docs/dynacat.yml
-```
-
-Feel free to edit the `dynacat.yml` file to your liking, and when ready run:
-
-```bash
-docker compose up -d
-```
-
-If you encounter any issues, you can check the logs by running:
-
-```bash
-docker logs dynacat
-```
-
-<hr>
-</details>
-<details>
-<summary><strong>Coming from Glance</strong></summary>
-If you have already set up glance you're only one step away from switching to Dynacat!
-
-All you have to do is replace your current image (`glanceapp/glance:latest`) with one from below:
-
-```yaml
-panonim/dynacat:latest
-```
-</details>
 <br>
 
 ### Environment Variables
