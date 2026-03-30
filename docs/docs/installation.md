@@ -92,8 +92,33 @@ panonim/dynacat:latest
 ```
 
 
-## Disable automatic updates
+### Disable automatic updates
 
 | Variable | Default | Description |
 | -------- | ------- | ----------- |
 | `ENABLE_DYNAMIC_UPDATE` | `true` | Set to `false`, `0`, or `f` to disable automatic widget refresh. Useful for static views or default glance behaviour. |
+
+
+## Build binary with Go
+
+Requirements: [Go](https://go.dev/dl/) >= v1.23
+
+To build the project for your current OS and architecture, run:
+
+```bash
+mkdir -p build && go build -o build/dynacat .
+```
+
+To build for a specific OS and architecture, run:
+
+```bash
+mkdir -p build && GOOS=linux GOARCH=amd64 go build -o build/dynacat .
+```
+
+[*click here for a full list of GOOS and GOARCH combinations*](https://go.dev/doc/install/source#:~:text=$GOOS%20and%20$GOARCH)
+
+Alternatively, if you just want to run the app without creating a binary, like when you're testing out changes, you can run:
+
+```bash
+go run .
+```

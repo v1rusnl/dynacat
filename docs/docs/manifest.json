@@ -9,6 +9,7 @@
     { "id": "default-rates", "title": "Default Update Rates", "file": "docs/default_rates.md" },
     { "id": "docker-options", "title": "Docker Options", "file": "docs/docker-options.md" },
     { "id": "extensions", "title": "Extensions", "file": "docs/extensions.md" },
+    { "id": "faq", "title": "Faq", "file": "docs/faq.md" },
     { "id": "installation", "title": "Installation", "file": "docs/installation.md" },
     { "id": "preconfigured-pages", "title": "Preconfigured Pages", "file": "docs/preconfigured-pages.md" },
     { "id": "themes", "title": "Themes", "file": "docs/themes.md" }

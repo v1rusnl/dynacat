@@ -150,14 +150,6 @@ Configuration is done through YAML files, to learn more about how the layout wor
 ```
 </details>
 
-<br>
-
-### Environment Variables
-
-| Variable | Default | Description |
-| -------- | ------- | ----------- |
-| `ENABLE_DYNAMIC_UPDATE` | `true` | Set to `false`, `0`, or `f` to disable automatic widget refresh. Useful for static views or default glance behaviour. |
-
 ## Common issues
 <details>
 <summary><strong>Requests timing out</strong></summary>
@@ -187,91 +179,17 @@ The most common cause of this is having a `pages` key in your `dynacat.yml` and 
 
 <br>
 
-## FAQ
-<details>
-<summary><strong>Does the information on the page update automatically?</strong></summary>
-Yes! That's the whole point of Dynacat
-</details>
-
-<details>
-<summary><strong>Can I create my own widgets?</strong></summary>
-
-Yes, there are multiple ways to create custom widgets:
-* `iframe` widget - allows you to embed things from other websites
-* `html` widget - allows you to insert your own static HTML
-* `extension` widget - fetch HTML from a URL
-* `custom-api` widget - fetch JSON from a URL and render it using custom HTML
-</details>
-
-<details>
-<summary><strong>Can I change the title of a widget?</strong></summary>
-
-Yes, the title of all widgets can be changed by specifying the `title` property in the widget's configuration:
-
-```yaml
-- type: rss
-  title: My custom title
-
-- type: markets
-  title: My custom title
-
-- type: videos
-  title: My custom title
-
-# and so on for all widgets...
-```
-</details>
-<br>
-
-## Building from source
-
-Choose one of the following methods:
-
-<details>
-<summary><strong>Build binary with Go</strong></summary>
-<br>
-
-Requirements: [Go](https://go.dev/dl/) >= v1.23
-
-To build the project for your current OS and architecture, run:
-
-```bash
-go build -o build/dynacat .
-```
-
-To build for a specific OS and architecture, run:
-
-```bash
-GOOS=linux GOARCH=amd64 go build -o build/dynacat .
-```
-
-[*click here for a full list of GOOS and GOARCH combinations*](https://go.dev/doc/install/source#:~:text=$GOOS%20and%20$GOARCH)
-
-Alternatively, if you just want to run the app without creating a binary, like when you're testing out changes, you can run:
-
-```bash
-go run .
-```
-<hr>
-</details>
-
-<details>
-<summary><strong>Build project and Docker image with Docker</strong></summary>
-<br>
-
-Requirements: [Docker](https://docs.docker.com/engine/install/)
-
-To build the project and image using just Docker, run:
-
-*(replace `owner` with your name or organization)*
-
-```bash
-docker build -t owner/dynacat:latest .
-```
-</details>
-
-<br>
+<div style='text-align: center;'>
 
 **If you like this project, please consider [sponsoring](https://www.paypal.com/paypalme/imartur).**
+
+<a href="https://www.star-history.com/?repos=panonim%2Fdynacat&type=date&legend=bottom-right">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=panonim/dynacat&type=date&theme=dark&legend=bottom-right" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=panonim/dynacat&type=date&legend=bottom-right" />
+   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=panonim/dynacat&type=date&legend=bottom-right" />
+ </picture>
+</a>
+</div>
 
 > This is a fork of a ['Glance'](https://github.com/glanceapp/glance) dashboard. 
