@@ -8,6 +8,149 @@ let PAGES = {
 };
 
 let DOC_PATHS = {};
+let ROUTE_ALIASES = new Map();
+
+function normalizeRouteToken(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.(md|html)$/i, '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-z0-9_\/-]+/g, '-');
+}
+
+function registerRouteAlias(aliasMap, alias, pageId) {
+  const normalized = normalizeRouteToken(alias);
+  if (!normalized) return;
+  if (normalized === 'index') return;
+  if (!aliasMap.has(normalized)) aliasMap.set(normalized, pageId);
+}
+
+function rebuildRouteAliases() {
+  const aliases = new Map();
+
+  registerRouteAlias(aliases, 'home', 'home');
+
+  Object.keys(PAGES).forEach(pageId => {
+    registerRouteAlias(aliases, pageId, pageId);
+    registerRouteAlias(aliases, pageId.replace(/-/g, '_'), pageId);
+
+    const title = PAGES[pageId] && (PAGES[pageId].title || PAGES[pageId].label);
+    if (title) registerRouteAlias(aliases, title, pageId);
+
+    const docPath = DOC_PATHS[pageId];
+    if (!docPath) return;
+
+    const pathSegments = String(docPath).split('/').filter(Boolean);
+    const fileName = pathSegments[pathSegments.length - 1] || '';
+    const stem = fileName.replace(/\.(md|html)$/i, '');
+
+    registerRouteAlias(aliases, stem, pageId);
+    registerRouteAlias(aliases, stem.replace(/_/g, '-'), pageId);
+  });
+
+  ROUTE_ALIASES = aliases;
+}
+
+function resolvePageId(rawValue) {
+  const normalized = normalizeRouteToken(rawValue);
+  if (!normalized) return null;
+
+  const tokens = normalized.split('/').filter(Boolean);
+  const candidates = [normalized];
+  if (tokens.length > 0) candidates.push(tokens[tokens.length - 1]);
+
+  if (tokens[0] === 'docs' && tokens.length > 1) {
+    candidates.push(tokens.slice(1).join('/'));
+    candidates.push(tokens[tokens.length - 1]);
+  }
+
+  for (const candidate of candidates) {
+    const exact = ROUTE_ALIASES.get(candidate);
+    if (exact) return exact;
+
+    const hyphen = ROUTE_ALIASES.get(candidate.replace(/_/g, '-'));
+    if (hyphen) return hyphen;
+
+    const underscore = ROUTE_ALIASES.get(candidate.replace(/-/g, '_'));
+    if (underscore) return underscore;
+  }
+
+  return null;
+}
+
+function parsePageFromPathname(pathname) {
+  const normalizedPath = String(pathname || '')
+    .split('?')[0]
+    .split('#')[0]
+    .replace(/\/+$/g, '');
+
+  if (!normalizedPath || normalizedPath === '/') return null;
+
+  const tokens = normalizedPath.split('/').filter(Boolean);
+  if (tokens.length === 0) return null;
+
+  const lastToken = tokens[tokens.length - 1].toLowerCase();
+  if (lastToken === 'index' || lastToken === 'index.html') {
+    tokens.pop();
+  }
+
+  if (tokens.length === 0) return null;
+
+  const pathWithoutLeadingSlash = tokens.join('/');
+  const candidates = [
+    pathWithoutLeadingSlash,
+    tokens[tokens.length - 1],
+  ];
+
+  for (const candidate of candidates) {
+    const resolved = resolvePageId(candidate);
+    if (resolved) return resolved;
+  }
+
+  return null;
+}
+
+function parseHashRoute(rawHash) {
+  const normalizedHash = String(rawHash || '').replace(/^#/, '').trim();
+  if (!normalizedHash) return null;
+
+  const hashWithoutNavPrefix = normalizedHash.startsWith('nav:')
+    ? normalizedHash.slice(4)
+    : normalizedHash;
+
+  const slashIdx = hashWithoutNavPrefix.indexOf('/');
+  const rawPageId = slashIdx === -1
+    ? hashWithoutNavPrefix
+    : hashWithoutNavPrefix.slice(0, slashIdx);
+  const resolvedPageId = resolvePageId(rawPageId);
+  if (!resolvedPageId) return null;
+
+  const headingHash = slashIdx === -1
+    ? null
+    : hashWithoutNavPrefix.slice(slashIdx + 1);
+
+  return {
+    pageId: resolvedPageId,
+    hash: headingHash || null,
+  };
+}
+
+function parseCurrentRoute(pathname = location.pathname, hash = location.hash) {
+  const parsedFromHash = parseHashRoute(hash);
+  if (parsedFromHash) return parsedFromHash;
+
+  const pageFromPath = parsePageFromPathname(pathname);
+  const rawHash = String(hash || '').replace(/^#/, '').trim();
+
+  // Support URLs like /configuration#getting-started where hash is a heading.
+  if (pageFromPath && rawHash) {
+    return { pageId: pageFromPath, hash: rawHash };
+  }
+
+  return { pageId: pageFromPath || 'home', hash: null };
+}
 
 function buildPathCandidates(path) {
   const trimmed = String(path || '').trim();
@@ -105,6 +248,7 @@ function rebuildSearchIndex() {
   });
 
   PAGE_LOOKUP = lookup;
+  rebuildRouteAliases();
 }
 
 /* ─── State ──────────────────────────────────────────────────────────────── */
@@ -497,11 +641,7 @@ async function navigateTo(pageId, hash, skipPushState) {
 }
 
 function parseLocationHash() {
-  const raw = location.hash.slice(1); // strip leading #
-  if (!raw) return { pageId: 'home', hash: null };
-  const slash = raw.indexOf('/');
-  if (slash === -1) return { pageId: raw, hash: null };
-  return { pageId: raw.slice(0, slash), hash: raw.slice(slash + 1) };
+  return parseCurrentRoute();
 }
 
 /* ─── Markdown rendering ─────────────────────────────────────────────────── */
@@ -901,6 +1041,17 @@ function handleContentLinks(container) {
       const target = document.getElementById(href.slice(1));
       if (target) scrollToElementFast(target);
       return;
+    }
+
+    // Same-origin links can map to docs pages (e.g. /configuration, /docs/configuration).
+    const resolvedUrl = new URL(href, location.href);
+    if (resolvedUrl.origin === location.origin) {
+      const route = parseCurrentRoute(resolvedUrl.pathname, resolvedUrl.hash);
+      if (route.pageId !== 'home' || route.hash) {
+        e.preventDefault();
+        navigateTo(route.pageId, route.hash);
+        return;
+      }
     }
 
     // External links
@@ -1809,6 +1960,8 @@ window.addEventListener('popstate', () => {
 
 /* ─── Init ───────────────────────────────────────────────────────────────── */
 
-const { pageId: initPage, hash: initHash } = parseLocationHash();
-loadManifest().then(() => navigateTo(initPage, initHash, true));
+loadManifest().then(() => {
+  const { pageId: initPage, hash: initHash } = parseLocationHash();
+  navigateTo(initPage, initHash, true);
+});
 

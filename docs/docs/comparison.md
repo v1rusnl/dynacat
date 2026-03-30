@@ -76,4 +76,4 @@
 >
 > Dynacat is fully compatible with existing Glance configurations!
 >
-> [Migration Guide](/docs/#installation/coming-from-glance)
+> [Migration Guide](/installation#coming-from-glance)
