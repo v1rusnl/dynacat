@@ -112,6 +112,7 @@ function rebuildSearchIndex() {
 let currentPage = 'home';
 let forceInstantScroll = false;
 let navigationRequestId = 0;
+let isHomeCursorTrackingActive = false;
 
 const docCache = new Map();
 const pendingDocLoads = new Map();
@@ -394,6 +395,48 @@ function setActiveNav(pageId) {
   });
 }
 
+function handleHomeCursorMove(e) {
+  const leftEye = document.getElementById('eye-left');
+  const rightEye = document.getElementById('eye-right');
+  if (!leftEye || !rightEye) return;
+
+  const wrapper = leftEye.parentElement;
+  const wrapperRect = wrapper.getBoundingClientRect();
+  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
+  const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2;
+
+  // Calculate angle from wrapper center to cursor
+  const deltaX = e.clientX - wrapperCenterX;
+  const deltaY = e.clientY - wrapperCenterY;
+  const angle = Math.atan2(deltaY, deltaX);
+
+  // Both eyes look at same angle, but movement is limited
+  const maxDist = 8;
+  const dist = Math.min(maxDist, Math.hypot(deltaX, deltaY) / 50);
+
+  const moveX = Math.cos(angle) * dist;
+  const moveY = Math.sin(angle) * dist;
+
+  // Both eyes move together in the same direction
+  leftEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
+  rightEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
+}
+
+function setHomeCursorTracking(enabled) {
+  if (enabled) {
+    if (!isHomeCursorTrackingActive) {
+      document.addEventListener('mousemove', handleHomeCursorMove);
+      isHomeCursorTrackingActive = true;
+    }
+    return;
+  }
+
+  if (isHomeCursorTrackingActive) {
+    document.removeEventListener('mousemove', handleHomeCursorMove);
+    isHomeCursorTrackingActive = false;
+  }
+}
+
 async function navigateTo(pageId, hash, skipPushState) {
   const requestId = ++navigationRequestId;
 
@@ -407,6 +450,7 @@ async function navigateTo(pageId, hash, skipPushState) {
     document.title = 'Page Not Found - Dynacat';
     const mainContainer = document.querySelector('.main');
     if (mainContainer) mainContainer.classList.remove('is-home');
+    setHomeCursorTracking(false);
     if (!skipPushState) {
       history.pushState({ pageId: unknownPageId }, '', `#${unknownPageId}`);
     }
@@ -423,7 +467,9 @@ async function navigateTo(pageId, hash, skipPushState) {
 
   // Toggle home-specific layout (hide topbar, full-width)
   const mainContainer = document.querySelector('.main');
-  if (mainContainer) mainContainer.classList.toggle('is-home', pageId === 'home');
+  const isHomePage = pageId === 'home';
+  if (mainContainer) mainContainer.classList.toggle('is-home', isHomePage);
+  setHomeCursorTracking(isHomePage);
 
   if (!skipPushState) {
     const newHash = pageId === 'home'
@@ -534,7 +580,11 @@ function processCallouts(container) {
 
     const markerPattern = /^\s*\[!([A-Z0-9_-]+)\]\s*/i;
     const match = firstP.innerHTML.match(markerPattern);
-    if (!match) return;
+    if (!match) {
+      bq.classList.add('callout', 'callout-quote');
+      bq.dataset.calloutType = 'quote';
+      return;
+    }
 
     const rawType = match[1];
     const normalizedType = rawType.toLowerCase().replace(/_/g, '-');
@@ -710,16 +760,14 @@ function flashTermInScope(scope, term) {
   const nodeChunks = new Map();
   textNodes.forEach(n => nodeChunks.set(n, []));
 
-  matches.forEach((m, mi) => {
+  matches.forEach(m => {
     nodeMetas.forEach(meta => {
       if (m.end <= meta.start || m.start >= meta.end) return;
       const startInNode = Math.max(0, m.start - meta.start);
       const endInNode = Math.min(meta.end - meta.start, m.end - meta.start);
-      nodeChunks.get(meta.node).push({ start: startInNode, end: endInNode, mi });
+      nodeChunks.get(meta.node).push({ start: startInNode, end: endInNode });
     });
   });
-
-  const matchGroups = new Map();
 
   for (const meta of nodeMetas) {
     const chunks = nodeChunks.get(meta.node);
@@ -740,8 +788,6 @@ function flashTermInScope(scope, term) {
       span.textContent = val.slice(c.start, c.end);
       frag.appendChild(span);
       highlights.push(span);
-      if (!matchGroups.has(c.mi)) matchGroups.set(c.mi, []);
-      matchGroups.get(c.mi).push(span);
       last = c.end;
     }
     if (last < val.length) {
@@ -751,34 +797,7 @@ function flashTermInScope(scope, term) {
     meta.node.parentNode.replaceChild(frag, meta.node);
   }
 
-  for (const [, spans] of matchGroups) {
-    if (spans.length <= 1) continue;
-    spans[0].classList.add('sh-first');
-    for (let i = 1; i < spans.length - 1; i++) {
-      spans[i].classList.add('sh-mid');
-    }
-    spans[spans.length - 1].classList.add('sh-last');
-  }
-
   return highlights;
-}
-
-function expandMatchingDetailsInScope(scope, terms) {
-  if (!scope || !terms || terms.length === 0) return;
-
-  scope.querySelectorAll('details:not([open])').forEach(detailsEl => {
-    const detailsText = normalizeHighlightPhrase(detailsEl.textContent || '');
-    if (!detailsText) return;
-
-    const hasMatch = terms.some(term => {
-      const parts = term.split(/\s+/).map(p => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
-      const regex = new RegExp(parts.join('[\\W]+'));
-      return regex.test(detailsText);
-    });
-    if (hasMatch) {
-      detailsEl.open = true;
-    }
-  });
 }
 
 function getSectionSearchScopes(wrapper, hash) {
@@ -813,11 +832,6 @@ function flashSearchHighlight(container, hash, query) {
 
   const scopes = getSectionSearchScopes(container, hash);
 
-  // Expand collapsed details that contain the search term before highlighting.
-  scopes.forEach(scope => {
-    expandMatchingDetailsInScope(scope, terms);
-  });
-
   const allHighlights = [];
   for (const scope of scopes) {
     for (const term of terms) {
@@ -828,8 +842,8 @@ function flashSearchHighlight(container, hash, query) {
 
   if (allHighlights.length === 0) return false;
 
-  const HIGHLIGHT_LIFETIME_MS = 3500;
-  const HIGHLIGHT_FADEOUT_MS = 480;
+  const HIGHLIGHT_LIFETIME_MS = 3000;
+  const HIGHLIGHT_FADEOUT_MS = 320;
 
   // Start enter animation after paint so text is visible first.
   requestAnimationFrame(() => {
@@ -1798,29 +1812,3 @@ window.addEventListener('popstate', () => {
 const { pageId: initPage, hash: initHash } = parseLocationHash();
 loadManifest().then(() => navigateTo(initPage, initHash, true));
 
-document.addEventListener('mousemove', (e) => {
-  const leftEye = document.getElementById('eye-left');
-  const rightEye = document.getElementById('eye-right');
-  if (!leftEye || !rightEye) return;
-
-  const wrapper = leftEye.parentElement;
-  const wrapperRect = wrapper.getBoundingClientRect();
-  const wrapperCenterX = wrapperRect.left + wrapperRect.width / 2;
-  const wrapperCenterY = wrapperRect.top + wrapperRect.height / 2;
-
-  // Calculate angle from wrapper center to cursor
-  const deltaX = e.clientX - wrapperCenterX;
-  const deltaY = e.clientY - wrapperCenterY;
-  const angle = Math.atan2(deltaY, deltaX);
-
-  // Both eyes look at same angle, but movement is limited
-  const maxDist = 8;
-  const dist = Math.min(maxDist, Math.hypot(deltaX, deltaY) / 50);
-
-  const moveX = Math.cos(angle) * dist;
-  const moveY = Math.sin(angle) * dist;
-
-  // Both eyes move together in the same direction
-  leftEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
-  rightEye.style.transform = `translate(${moveX}px, ${moveY}px)`;
-});

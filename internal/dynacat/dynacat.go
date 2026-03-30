@@ -32,8 +32,8 @@ const REMOTE_IMAGE_CACHE_DURATION = 7 * 24 * time.Hour
 var reservedPageSlugs = []string{"login", "logout"}
 
 type imageProxyInfo struct {
-	URL            string
-	AllowInsecure  bool
+	URL           string
+	AllowInsecure bool
 }
 
 type application struct {
@@ -55,11 +55,11 @@ type application struct {
 
 	todoStorage *todoStorage
 
-	sseMu               sync.RWMutex
-	sseClients          map[*sseClient]struct{}
+	sseMu                sync.RWMutex
+	sseClients           map[*sseClient]struct{}
 	DynamicUpdateEnabled bool
 
-	imageProxyMu  sync.RWMutex
+	imageProxyMu   sync.RWMutex
 	imageProxyURLs map[string]imageProxyInfo
 
 	imageCache *imageCache
@@ -67,13 +67,13 @@ type application struct {
 
 func newApplication(c *config) (*application, error) {
 	app := &application{
-		Version:      buildVersion,
-		CreatedAt:    time.Now(),
-		Config:       *c,
-		slugToPage:   make(map[string]*page),
-		widgetByID:   make(map[uint64]widget),
-		widgetToPage: make(map[uint64]*page),
-		sseClients:   make(map[*sseClient]struct{}),
+		Version:        buildVersion,
+		CreatedAt:      time.Now(),
+		Config:         *c,
+		slugToPage:     make(map[string]*page),
+		widgetByID:     make(map[uint64]widget),
+		widgetToPage:   make(map[uint64]*page),
+		sseClients:     make(map[*sseClient]struct{}),
 		imageProxyURLs: make(map[string]imageProxyInfo),
 	}
 	config := &app.Config
@@ -448,9 +448,9 @@ type templateRequestData struct {
 }
 
 type templateData struct {
-	App                *application
-	Page               *page
-	Request            templateRequestData
+	App     *application
+	Page    *page
+	Request templateRequestData
 }
 
 func (a *application) populateTemplateRequestData(data *templateRequestData, r *http.Request) {
@@ -743,12 +743,14 @@ func (a *application) server() (func() error, func() error) {
 		w.Write(a.parsedManifest)
 	})
 
-	var absAssetsPath string
-	if a.Config.Server.AssetsPath != "" {
-		absAssetsPath, _ = filepath.Abs(a.Config.Server.AssetsPath)
-		assetsFS := fileServerWithCache(http.Dir(a.Config.Server.AssetsPath), 2*time.Hour)
-		mux.Handle("/assets/{path...}", http.StripPrefix("/assets/", assetsFS))
+	assetsPath := a.Config.Server.AssetsPath
+	if assetsPath == "" {
+		assetsPath = "/app/assets"
 	}
+
+	absAssetsPath, _ := filepath.Abs(assetsPath)
+	assetsFS := fileServerWithCache(http.Dir(assetsPath), 2*time.Hour)
+	mux.Handle("/assets/{path...}", http.StripPrefix("/assets/", assetsFS))
 
 	server := http.Server{
 		Addr:    fmt.Sprintf("%s:%d", a.Config.Server.Host, a.Config.Server.Port),
