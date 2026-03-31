@@ -210,14 +210,6 @@ function setupSearchBoxes() {
         kbdElement.addEventListener("mousedown", () => {
             requestAnimationFrame(() => inputElement.focus());
         });
-
-        // Handle autofocus for dynamically loaded content
-        if (inputElement.hasAttribute("autofocus")) {
-            // Use requestAnimationFrame to ensure DOM is fully ready
-            requestAnimationFrame(() => {
-                inputElement.focus();
-            });
-        }
     }
 }
 
