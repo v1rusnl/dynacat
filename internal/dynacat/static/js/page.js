@@ -984,13 +984,15 @@ function updateContentPreservingImages(oldContent, newContent) {
 
     for (const img of oldImages) {
         if (!imageMap.has(img.src)) {
-            imageMap.set(img.src, img);
+            imageMap.set(img.src, []);
         }
+        imageMap.get(img.src).push(img);
     }
 
     for (const newImg of newImages) {
-        const oldImg = imageMap.get(newImg.src);
-        if (oldImg) {
+        const queue = imageMap.get(newImg.src);
+        if (queue && queue.length > 0) {
+            const oldImg = queue.shift();
             for (const attr of newImg.attributes) {
                 if (attr.name !== 'src' && attr.name !== 'class') {
                     oldImg.setAttribute(attr.name, attr.value);
