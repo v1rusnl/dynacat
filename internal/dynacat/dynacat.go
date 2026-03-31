@@ -508,24 +508,28 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Check if cache is being built - this is only true during initial page load
-	isCacheBuilding := a.imageCache != nil && a.imageCache.IsBuildingCache()
-	w.Header().Set("X-Dynacat-Cache-Building", strconv.FormatBool(isCacheBuilding))
-
 	pageData := templateData{
 		Page: page,
 	}
 
 	var err error
 	var responseBytes bytes.Buffer
+	isCacheBuilding := false
 
 	func() {
 		page.mu.Lock()
 		defer page.mu.Unlock()
 
+		// Determine cache-build status after widgets have had a chance to queue
+		// image fetches to avoid missing the initial "building cache" response.
 		page.updateOutdatedWidgets()
+		if a.imageCache != nil {
+			isCacheBuilding = a.imageCache.IsBuildingCache()
+		}
 		err = pageContentTemplate.Execute(&responseBytes, pageData)
 	}()
+
+	w.Header().Set("X-Dynacat-Cache-Building", strconv.FormatBool(isCacheBuilding))
 
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
