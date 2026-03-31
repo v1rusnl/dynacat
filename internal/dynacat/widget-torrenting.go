@@ -19,12 +19,13 @@ import (
 
 var torrentingWidgetTemplate = mustParseTemplate("torrenting.html", "widget-base.html")
 
-var errTorrentUnauthorized = errors.New("qbittorrent: unauthorized")
+var errTorrentUnauthorized = errors.New("torrent client: unauthorized")
 
 type TorrentingHostConfig struct {
 	URL      string `yaml:"url"`
 	Username string `yaml:"username"`
 	Password string `yaml:"password"`
+	Client   string `yaml:"client"`
 	client   *http.Client
 }
 
@@ -89,11 +90,20 @@ func (widget *torrentingWidget) initialize() error {
 		if host.URL == "" {
 			return fmt.Errorf("host URL is required")
 		}
-		if host.Username == "" {
-			return fmt.Errorf("host username is required")
-		}
 		if host.Password == "" {
 			return fmt.Errorf("host password is required")
+		}
+
+		switch strings.ToLower(host.Client) {
+		case "", "qbittorrent":
+			host.Client = "qbittorrent"
+			if host.Username == "" {
+				return fmt.Errorf("host username is required for qBittorrent")
+			}
+		case "deluge":
+			host.Client = "deluge"
+		default:
+			return fmt.Errorf("unsupported torrent client: %s (supported: qbittorrent, deluge)", host.Client)
 		}
 
 		jar, err := cookiejar.New(nil)
@@ -141,7 +151,7 @@ func (widget *torrentingWidget) update(ctx context.Context) {
 	for result := range results {
 		if result.err != nil {
 			errorCount++
-			slog.Error("failed to fetch torrents from qBittorrent", "url", result.url, "error", result.err)
+			slog.Error("failed to fetch torrents", "url", result.url, "error", result.err)
 			continue
 		}
 		successCount++
@@ -174,7 +184,7 @@ func (widget *torrentingWidget) update(ctx context.Context) {
 	}
 }
 
-func (widget *torrentingWidget) login(ctx context.Context, host *TorrentingHostConfig) error {
+func (widget *torrentingWidget) qbLogin(ctx context.Context, host *TorrentingHostConfig) error {
 	loginURL := strings.TrimRight(host.URL, "/") + "/api/v2/auth/login"
 
 	form := url.Values{
@@ -207,19 +217,28 @@ func (widget *torrentingWidget) login(ctx context.Context, host *TorrentingHostC
 }
 
 func (widget *torrentingWidget) fetchFromHost(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
-	torrents, err := widget.fetchTorrentsOnce(ctx, host)
+	switch host.Client {
+	case "deluge":
+		return widget.fetchFromDeluge(ctx, host)
+	default:
+		return widget.fetchFromQBittorrent(ctx, host)
+	}
+}
+
+func (widget *torrentingWidget) fetchFromQBittorrent(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
+	torrents, err := widget.qbFetchTorrentsOnce(ctx, host)
 	if errors.Is(err, errTorrentUnauthorized) {
 		slog.Info("qBittorrent session expired, re-logging in", "url", host.URL)
-		if loginErr := widget.login(ctx, host); loginErr != nil {
+		if loginErr := widget.qbLogin(ctx, host); loginErr != nil {
 			slog.Error("qBittorrent re-login failed", "url", host.URL, "error", loginErr)
 			return nil, loginErr
 		}
-		torrents, err = widget.fetchTorrentsOnce(ctx, host)
+		torrents, err = widget.qbFetchTorrentsOnce(ctx, host)
 	}
 	return torrents, err
 }
 
-func (widget *torrentingWidget) fetchTorrentsOnce(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
+func (widget *torrentingWidget) qbFetchTorrentsOnce(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
 	apiURL := strings.TrimRight(host.URL, "/") + "/api/v2/torrents/info"
 
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
@@ -266,13 +285,18 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 	info.IsCompleted = t.Progress >= 1.0
 
 	switch t.State {
+	// qBittorrent active states
 	case "downloading", "forcedDL", "uploading", "forcedUP":
+		info.IsActive = true
+	// Deluge active states
+	case "Downloading", "Seeding":
 		info.IsActive = true
 	}
 
 	switch {
 	case info.IsCompleted:
 		info.Icon = "✔"
+	// qBittorrent states
 	case t.State == "downloading" || t.State == "forcedDL":
 		info.Icon = "↓"
 	case t.State == "uploading" || t.State == "forcedUP":
@@ -283,6 +307,21 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 		info.Icon = "…"
 	case t.State == "checkingResumeData":
 		info.Icon = "⟳"
+	// Deluge states
+	case t.State == "Downloading":
+		info.Icon = "↓"
+	case t.State == "Seeding":
+		info.Icon = "↑"
+	case t.State == "Error":
+		info.Icon = "!"
+	case t.State == "Checking":
+		info.Icon = "…"
+	case t.State == "Moving":
+		info.Icon = "⟳"
+	case t.State == "Queued":
+		info.Icon = "…"
+	case t.State == "Paused":
+		info.Icon = "❚❚"
 	default:
 		info.Icon = "❚❚"
 	}
@@ -323,11 +362,191 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 	return info
 }
 
+// Deluge JSON-RPC types and methods
+
+type delugeJSONRPCRequest struct {
+	ID     int           `json:"id"`
+	Method string        `json:"method"`
+	Params []interface{} `json:"params"`
+}
+
+type delugeJSONRPCResponse struct {
+	ID     int             `json:"id"`
+	Result json.RawMessage `json:"result"`
+	Error  *struct {
+		Message string `json:"message"`
+		Code    int    `json:"code"`
+	} `json:"error"`
+}
+
+type delugeTorrentJSON struct {
+	Name      string  `json:"name"`
+	State     string  `json:"state"`
+	Progress  float64 `json:"progress"`
+	TotalDone int64   `json:"total_done"`
+	TotalSize int64   `json:"total_size"`
+	ETA       float64 `json:"eta"`
+}
+
+func (widget *torrentingWidget) delugeRPC(ctx context.Context, host *TorrentingHostConfig, method string, params ...interface{}) (*delugeJSONRPCResponse, error) {
+	rpcURL := strings.TrimRight(host.URL, "/") + "/json"
+
+	if params == nil {
+		params = []interface{}{}
+	}
+
+	reqBody := delugeJSONRPCRequest{
+		ID:     1,
+		Method: method,
+		Params: params,
+	}
+
+	bodyBytes, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", rpcURL, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := host.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, errTorrentUnauthorized
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, host.URL)
+	}
+
+	var rpcResp delugeJSONRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return nil, fmt.Errorf("failed to decode Deluge JSON-RPC response: %w", err)
+	}
+
+	if rpcResp.Error != nil {
+		if rpcResp.Error.Code == 1 {
+			return nil, errTorrentUnauthorized
+		}
+		return nil, fmt.Errorf("deluge RPC error: %s", rpcResp.Error.Message)
+	}
+
+	return &rpcResp, nil
+}
+
+func (widget *torrentingWidget) delugeLogin(ctx context.Context, host *TorrentingHostConfig) error {
+	resp, err := widget.delugeRPC(ctx, host, "auth.login", host.Password)
+	if err != nil {
+		return err
+	}
+
+	var result bool
+	if err := json.Unmarshal(resp.Result, &result); err != nil {
+		return fmt.Errorf("failed to parse Deluge login response: %w", err)
+	}
+
+	if !result {
+		return fmt.Errorf("deluge login failed: invalid password")
+	}
+
+	return nil
+}
+
+func (widget *torrentingWidget) delugeEnsureConnected(ctx context.Context, host *TorrentingHostConfig) error {
+	resp, err := widget.delugeRPC(ctx, host, "web.connected")
+	if err != nil {
+		return err
+	}
+
+	var connected bool
+	if err := json.Unmarshal(resp.Result, &connected); err != nil {
+		return fmt.Errorf("failed to parse Deluge connected response: %w", err)
+	}
+
+	if connected {
+		return nil
+	}
+
+	hostsResp, err := widget.delugeRPC(ctx, host, "web.get_hosts")
+	if err != nil {
+		return fmt.Errorf("failed to get Deluge hosts: %w", err)
+	}
+
+	var hosts [][]interface{}
+	if err := json.Unmarshal(hostsResp.Result, &hosts); err != nil {
+		return fmt.Errorf("failed to parse Deluge hosts: %w", err)
+	}
+
+	if len(hosts) == 0 {
+		return fmt.Errorf("no Deluge daemon hosts available")
+	}
+
+	hostID, ok := hosts[0][0].(string)
+	if !ok {
+		return fmt.Errorf("unexpected Deluge host ID format")
+	}
+
+	_, err = widget.delugeRPC(ctx, host, "web.connect", hostID)
+	return err
+}
+
+func (widget *torrentingWidget) fetchFromDeluge(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
+	torrents, err := widget.delugeFetchTorrentsOnce(ctx, host)
+	if errors.Is(err, errTorrentUnauthorized) {
+		slog.Info("Deluge session expired, re-logging in", "url", host.URL)
+		if loginErr := widget.delugeLogin(ctx, host); loginErr != nil {
+			slog.Error("Deluge re-login failed", "url", host.URL, "error", loginErr)
+			return nil, loginErr
+		}
+		if connErr := widget.delugeEnsureConnected(ctx, host); connErr != nil {
+			slog.Error("Deluge daemon connection failed", "url", host.URL, "error", connErr)
+			return nil, connErr
+		}
+		torrents, err = widget.delugeFetchTorrentsOnce(ctx, host)
+	}
+	return torrents, err
+}
+
+func (widget *torrentingWidget) delugeFetchTorrentsOnce(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
+	fields := []string{"name", "state", "progress", "total_done", "total_size", "eta"}
+
+	resp, err := widget.delugeRPC(ctx, host, "core.get_torrents_status", map[string]interface{}{}, fields)
+	if err != nil {
+		return nil, err
+	}
+
+	var raw map[string]delugeTorrentJSON
+	if err := json.Unmarshal(resp.Result, &raw); err != nil {
+		return nil, fmt.Errorf("failed to decode Deluge torrents: %w", err)
+	}
+
+	torrents := make([]torrentInfo, 0, len(raw))
+	for _, t := range raw {
+		torrents = append(torrents, computeTorrentInfo(qbTorrentJSON{
+			Name:       t.Name,
+			State:      t.State,
+			Progress:   t.Progress / 100.0,
+			Downloaded: t.TotalDone,
+			Size:       t.TotalSize,
+			ETA:        int64(t.ETA),
+		}))
+	}
+
+	return torrents, nil
+}
+
 func torrentDownloadPriority(info torrentInfo) int {
 	switch info.State {
-	case "downloading", "forcedDL":
+	case "downloading", "forcedDL", "Downloading":
 		return 0
-	case "uploading", "forcedUP":
+	case "uploading", "forcedUP", "Seeding":
 		return 1
 	default:
 		if info.IsCompleted {

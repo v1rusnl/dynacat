@@ -3172,7 +3172,7 @@ The server will use an insecure HTTP client to fetch both metadata and images, w
 
 ### Torrenting
 
-Display active torrents from one or more qBittorrent instances.
+Display active torrents from one or more qBittorrent or Deluge instances.
 
 Example:
 
@@ -3182,6 +3182,9 @@ Example:
     - url: http://192.168.1.1:8080
       username: admin
       password: adminadmin
+    - url: http://192.168.1.2:8112
+      client: deluge
+      password: deluge
 ```
 
 #### Properties
@@ -3197,26 +3200,48 @@ Example:
 
 ##### `hosts`
 
-An array of qBittorrent instances to connect to.
+An array of torrent client instances to connect to. Supports qBittorrent and Deluge. You can mix different clients in the same widget.
 
 Properties for each host:
 
 | Name | Type | Required |
 | ---- | ---- | -------- |
 | url | string | yes |
-| username | string | yes |
+| client | string | no |
+| username | string | qBittorrent only |
 | password | string | yes |
 
-Example:
+###### `client`
+The torrent client type. Supported values: `qbittorrent` (default), `deluge`.
+
+Example with qBittorrent (default):
 
 ```yaml
 hosts:
   - url: http://192.168.1.1:8080
     username: admin
     password: adminadmin
-  - url: http://192.168.1.2:8080
+```
+
+Example with Deluge:
+
+```yaml
+hosts:
+  - url: http://192.168.1.1:8112
+    client: deluge
+    password: deluge
+```
+
+Example mixing both clients:
+
+```yaml
+hosts:
+  - url: http://192.168.1.1:8080
     username: admin
     password: adminadmin
+  - url: http://192.168.1.2:8112
+    client: deluge
+    password: deluge
 ```
 
 ##### `hide-completed`
