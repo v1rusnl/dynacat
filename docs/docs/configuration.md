@@ -3172,7 +3172,7 @@ The server will use an insecure HTTP client to fetch both metadata and images, w
 
 ### Torrenting
 
-Display active torrents from one or more qBittorrent instances.
+Display active torrents from one or more qBittorrent, Deluge, or Transmission instances.
 
 Example:
 
@@ -3180,6 +3180,13 @@ Example:
 - type: torrenting
   hosts:
     - url: http://192.168.1.1:8080
+      username: admin
+      password: adminadmin
+    - url: http://192.168.1.2:8112
+      client: deluge
+      password: deluge
+    - url: http://192.168.1.3:9091
+      client: transmission
       username: admin
       password: adminadmin
 ```
@@ -3197,24 +3204,60 @@ Example:
 
 ##### `hosts`
 
-An array of qBittorrent instances to connect to.
+An array of torrent client instances to connect to. Supports qBittorrent, Deluge, and Transmission. You can mix different clients in the same widget.
 
 Properties for each host:
 
 | Name | Type | Required |
 | ---- | ---- | -------- |
 | url | string | yes |
-| username | string | yes |
+| client | string | no |
+| username | string | yes (except Deluge) |
 | password | string | yes |
 
-Example:
+###### `client`
+The torrent client type. Supported values: `qbittorrent` (default), `deluge`, `transmission`.
+
+Example with qBittorrent (default):
 
 ```yaml
 hosts:
   - url: http://192.168.1.1:8080
     username: admin
     password: adminadmin
-  - url: http://192.168.1.2:8080
+```
+
+Example with Deluge:
+
+```yaml
+hosts:
+  - url: http://192.168.1.1:8112
+    client: deluge
+    password: deluge
+```
+
+Example with Transmission:
+
+```yaml
+hosts:
+  - url: http://192.168.1.1:9091
+    client: transmission
+    username: admin
+    password: adminadmin
+```
+
+Example mixing multiple clients:
+
+```yaml
+hosts:
+  - url: http://192.168.1.1:8080
+    username: admin
+    password: adminadmin
+  - url: http://192.168.1.2:8112
+    client: deluge
+    password: deluge
+  - url: http://192.168.1.3:9091
+    client: transmission
     username: admin
     password: adminadmin
 ```
