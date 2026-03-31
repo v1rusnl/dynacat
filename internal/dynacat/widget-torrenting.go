@@ -27,6 +27,9 @@ type TorrentingHostConfig struct {
 	Password string `yaml:"password"`
 	Client   string `yaml:"client"`
 	client   *http.Client
+
+	trSessionID string
+	trSessionMu sync.Mutex
 }
 
 type torrentingWidget struct {
@@ -38,8 +41,9 @@ type torrentingWidget struct {
 	WrapText      bool                   `yaml:"wrap-text"`
 	CollapseAfter int                    `yaml:"collapse-after"`
 
-	mu       sync.RWMutex
-	Torrents []torrentInfo
+	mu        sync.RWMutex
+	Torrents  []torrentInfo
+	MultiHost bool
 }
 
 type torrentInfo struct {
@@ -56,6 +60,7 @@ type torrentInfo struct {
 	FmtETA        string
 	ShortName     string
 	ProgressWidth string
+	ClientIcon    string
 }
 
 type qbTorrentJSON struct {
@@ -102,8 +107,10 @@ func (widget *torrentingWidget) initialize() error {
 			}
 		case "deluge":
 			host.Client = "deluge"
+		case "transmission":
+			host.Client = "transmission"
 		default:
-			return fmt.Errorf("unsupported torrent client: %s (supported: qbittorrent, deluge)", host.Client)
+			return fmt.Errorf("unsupported torrent client: %s (supported: qbittorrent, deluge, transmission)", host.Client)
 		}
 
 		jar, err := cookiejar.New(nil)
@@ -120,10 +127,13 @@ func (widget *torrentingWidget) initialize() error {
 }
 
 func (widget *torrentingWidget) update(ctx context.Context) {
+	widget.MultiHost = len(widget.Hosts) > 1
+
 	type fetchResult struct {
 		torrents []torrentInfo
 		err      error
 		url      string
+		client   string
 	}
 
 	results := make(chan fetchResult, len(widget.Hosts))
@@ -135,7 +145,7 @@ func (widget *torrentingWidget) update(ctx context.Context) {
 		go func(h *TorrentingHostConfig) {
 			defer wg.Done()
 			torrents, err := widget.fetchFromHost(ctx, h)
-			results <- fetchResult{torrents: torrents, err: err, url: h.URL}
+			results <- fetchResult{torrents: torrents, err: err, url: h.URL, client: h.Client}
 		}(host)
 	}
 
@@ -155,6 +165,11 @@ func (widget *torrentingWidget) update(ctx context.Context) {
 			continue
 		}
 		successCount++
+		if widget.MultiHost {
+			for i := range result.torrents {
+				result.torrents[i].ClientIcon = result.client
+			}
+		}
 		allTorrents = append(allTorrents, result.torrents...)
 	}
 
@@ -220,6 +235,8 @@ func (widget *torrentingWidget) fetchFromHost(ctx context.Context, host *Torrent
 	switch host.Client {
 	case "deluge":
 		return widget.fetchFromDeluge(ctx, host)
+	case "transmission":
+		return widget.fetchFromTransmission(ctx, host)
 	default:
 		return widget.fetchFromQBittorrent(ctx, host)
 	}
@@ -291,6 +308,9 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 	// Deluge active states
 	case "Downloading", "Seeding":
 		info.IsActive = true
+	// Transmission active states
+	case "tr-downloading", "tr-seeding":
+		info.IsActive = true
 	}
 
 	switch {
@@ -321,6 +341,19 @@ func computeTorrentInfo(t qbTorrentJSON) torrentInfo {
 	case t.State == "Queued":
 		info.Icon = "…"
 	case t.State == "Paused":
+		info.Icon = "❚❚"
+	// Transmission states
+	case t.State == "tr-downloading":
+		info.Icon = "↓"
+	case t.State == "tr-seeding":
+		info.Icon = "↑"
+	case t.State == "tr-error":
+		info.Icon = "!"
+	case t.State == "tr-checking" || t.State == "tr-check-wait":
+		info.Icon = "…"
+	case t.State == "tr-download-wait" || t.State == "tr-seed-wait":
+		info.Icon = "…"
+	case t.State == "tr-stopped":
 		info.Icon = "❚❚"
 	default:
 		info.Icon = "❚❚"
@@ -542,11 +575,171 @@ func (widget *torrentingWidget) delugeFetchTorrentsOnce(ctx context.Context, hos
 	return torrents, nil
 }
 
+// Transmission RPC types and methods
+
+type transmissionRPCRequest struct {
+	Method    string                 `json:"method"`
+	Arguments map[string]interface{} `json:"arguments,omitempty"`
+}
+
+type transmissionRPCResponse struct {
+	Result    string `json:"result"`
+	Arguments struct {
+		Torrents []transmissionTorrentJSON `json:"torrents"`
+	} `json:"arguments"`
+}
+
+type transmissionTorrentJSON struct {
+	Name           string  `json:"name"`
+	Status         int     `json:"status"`
+	PercentDone    float64 `json:"percentDone"`
+	DownloadedEver int64   `json:"downloadedEver"`
+	TotalSize      int64   `json:"totalSize"`
+	ETA            int64   `json:"eta"`
+	Error          int     `json:"error"`
+}
+
+func transmissionStatusToState(status int, hasError bool) string {
+	if hasError {
+		return "tr-error"
+	}
+	switch status {
+	case 0:
+		return "tr-stopped"
+	case 1:
+		return "tr-check-wait"
+	case 2:
+		return "tr-checking"
+	case 3:
+		return "tr-download-wait"
+	case 4:
+		return "tr-downloading"
+	case 5:
+		return "tr-seed-wait"
+	case 6:
+		return "tr-seeding"
+	default:
+		return "tr-stopped"
+	}
+}
+
+func (widget *torrentingWidget) trDoRPC(ctx context.Context, host *TorrentingHostConfig, rpcReq transmissionRPCRequest) (*transmissionRPCResponse, error) {
+	rpcURL := strings.TrimRight(host.URL, "/") + "/transmission/rpc"
+
+	bodyBytes, err := json.Marshal(rpcReq)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", rpcURL, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	if host.Username != "" {
+		req.SetBasicAuth(host.Username, host.Password)
+	}
+
+	host.trSessionMu.Lock()
+	sessionID := host.trSessionID
+	host.trSessionMu.Unlock()
+
+	if sessionID != "" {
+		req.Header.Set("X-Transmission-Session-Id", sessionID)
+	}
+
+	resp, err := host.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusConflict {
+		newSessionID := resp.Header.Get("X-Transmission-Session-Id")
+		if newSessionID == "" {
+			return nil, fmt.Errorf("transmission returned 409 without session ID header")
+		}
+
+		host.trSessionMu.Lock()
+		host.trSessionID = newSessionID
+		host.trSessionMu.Unlock()
+
+		retryReq, err := http.NewRequestWithContext(ctx, "POST", rpcURL, strings.NewReader(string(bodyBytes)))
+		if err != nil {
+			return nil, err
+		}
+		retryReq.Header.Set("Content-Type", "application/json")
+		retryReq.Header.Set("X-Transmission-Session-Id", newSessionID)
+		if host.Username != "" {
+			retryReq.SetBasicAuth(host.Username, host.Password)
+		}
+
+		resp, err = host.client.Do(retryReq)
+		if err != nil {
+			return nil, err
+		}
+		defer resp.Body.Close()
+	}
+
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		return nil, errTorrentUnauthorized
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status %d from %s", resp.StatusCode, host.URL)
+	}
+
+	var rpcResp transmissionRPCResponse
+	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
+		return nil, fmt.Errorf("failed to decode Transmission RPC response: %w", err)
+	}
+
+	if rpcResp.Result != "success" {
+		return nil, fmt.Errorf("transmission RPC error: %s", rpcResp.Result)
+	}
+
+	return &rpcResp, nil
+}
+
+func (widget *torrentingWidget) fetchFromTransmission(ctx context.Context, host *TorrentingHostConfig) ([]torrentInfo, error) {
+	rpcReq := transmissionRPCRequest{
+		Method: "torrent-get",
+		Arguments: map[string]interface{}{
+			"fields": []string{"name", "status", "percentDone", "downloadedEver", "totalSize", "eta", "error"},
+		},
+	}
+
+	resp, err := widget.trDoRPC(ctx, host, rpcReq)
+	if err != nil {
+		return nil, err
+	}
+
+	torrents := make([]torrentInfo, 0, len(resp.Arguments.Torrents))
+	for _, t := range resp.Arguments.Torrents {
+		state := transmissionStatusToState(t.Status, t.Error > 0)
+		eta := t.ETA
+		if eta < -1 {
+			eta = -1
+		}
+		torrents = append(torrents, computeTorrentInfo(qbTorrentJSON{
+			Name:       t.Name,
+			State:      state,
+			Progress:   t.PercentDone,
+			Downloaded: t.DownloadedEver,
+			Size:       t.TotalSize,
+			ETA:        eta,
+		}))
+	}
+
+	return torrents, nil
+}
+
 func torrentDownloadPriority(info torrentInfo) int {
 	switch info.State {
-	case "downloading", "forcedDL", "Downloading":
+	case "downloading", "forcedDL", "Downloading", "tr-downloading":
 		return 0
-	case "uploading", "forcedUP", "Seeding":
+	case "uploading", "forcedUP", "Seeding", "tr-seeding":
 		return 1
 	default:
 		if info.IsCompleted {

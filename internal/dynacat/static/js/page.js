@@ -402,7 +402,11 @@ function restoreCollapsibleContainerStates(element, containerStates) {
             }
 
             container.classList.add('no-reveal-animation');
-            button.click();
+            if (typeof button.setExpandedState === 'function') {
+                button.setExpandedState(shouldBeExpanded, { skipScrollAdjustment: true });
+            } else {
+                button.click();
+            }
         }
     }
 }
@@ -411,15 +415,15 @@ function attachExpandToggleButton(collapsibleContainer) {
     const showMoreText = "Show more";
     const showLessText = "Show less";
 
-    let expanded = false;
+    let expanded = collapsibleContainer.classList.contains("container-expanded");
     const button = document.createElement("button");
     const icon = document.createElement("span");
     icon.classList.add("expand-toggle-button-icon");
     const textNode = document.createTextNode(showMoreText);
     button.classList.add("expand-toggle-button");
-    button.append(textNode, icon);
-    button.addEventListener("click", () => {
-        expanded = !expanded;
+    const setExpandedState = (nextExpanded, options = {}) => {
+        const skipScrollAdjustment = options.skipScrollAdjustment === true;
+        expanded = nextExpanded;
 
         if (expanded) {
             collapsibleContainer.classList.add("container-expanded");
@@ -428,12 +432,16 @@ function attachExpandToggleButton(collapsibleContainer) {
             return;
         }
 
-        const topBefore = button.getClientRects()[0].top;
+        const topBefore = skipScrollAdjustment ? 0 : button.getClientRects()[0].top;
 
         collapsibleContainer.classList.remove("no-reveal-animation");
         collapsibleContainer.classList.remove("container-expanded");
         button.classList.remove("container-expanded");
         textNode.nodeValue = showMoreText;
+
+        if (skipScrollAdjustment) {
+            return;
+        }
 
         const topAfter = button.getClientRects()[0].top;
 
@@ -444,7 +452,11 @@ function attachExpandToggleButton(collapsibleContainer) {
             top: topAfter - topBefore,
             behavior: "instant"
         });
-    });
+    };
+    button.append(textNode, icon);
+    button.setExpandedState = setExpandedState;
+    setExpandedState(expanded, { skipScrollAdjustment: true });
+    button.addEventListener("click", () => setExpandedState(!expanded));
 
     collapsibleContainer.after(button);
 
