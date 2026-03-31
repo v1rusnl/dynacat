@@ -8,7 +8,6 @@
 </p>
 <p align="center">
   <a href="https://github.com/glanceapp/community-widgets">Glance Community widgets</a> •
-  <a href="https://dynacat.artur.zone/installation">Install</a> •  
   <a href="https://dynacat.artur.zone/preconfigured-pages">Preconfigured pages</a> •
   <a href="https://dynacat.artur.zone/themes">Themes</a> 
 </p>

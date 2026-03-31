@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Redirecting…</title>
+  <script>
+    (function () {
+      var parts = window.location.pathname.replace(/\/$/, '').split('/');
+      var slug = parts[parts.length - 1];
+      var heading = window.location.hash.replace(/^#/, '');
+      if (slug && slug !== 'index.html') {
+        var target = heading ? slug + '/' + heading : slug;
+        window.location.replace('./#' + target);
+      } else {
+        window.location.replace('./');
+      }
+    }());
+  </script>
+</head>
+<body></body>
+</html>
