@@ -3,7 +3,7 @@
     { "id": "home", "title": "Welcome" },
     { "id": "comparison", "title": "Comparison", "file": "docs/comparison.md" },
     { "id": "search", "title": "Search", "file": "docs/search.md" },
-    { "section": "Reference" },
+    { "section": "reference" },
     { "id": "configuration", "title": "Configuration", "file": "docs/configuration.md" },
     { "id": "custom-api", "title": "Custom API", "file": "docs/custom-api.md" },
     { "id": "default-rates", "title": "Default Update Rates", "file": "docs/default_rates.md" },
@@ -12,6 +12,9 @@
     { "id": "faq", "title": "Faq", "file": "docs/faq.md" },
     { "id": "installation", "title": "Installation", "file": "docs/installation.md" },
     { "id": "preconfigured-pages", "title": "Preconfigured Pages", "file": "docs/preconfigured-pages.md" },
-    { "id": "themes", "title": "Themes", "file": "docs/themes.md" }
+    { "id": "themes", "title": "Themes", "file": "docs/themes.md" },
+    { "section": "dynawidgets" },
+    { "id": "available-widgets", "title": "Available Widgets", "file": "docs/available-widgets.md" },
+    { "id": "contributing", "title": "Contributing", "file": "docs/contributing.md" }
   ]
 }
