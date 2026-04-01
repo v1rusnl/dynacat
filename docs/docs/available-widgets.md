@@ -1,0 +1,11 @@
+# Available Widgets
+
+Community-made widgets for Dynacat. These are hosted separately in the [dynawidgets repository](https://github.com/Panonim/dynawidgets).
+
+> [!NOTE]
+>
+> To submit your own widget, check the [Contributing](contributing) page.
+
+# --- WIDGETS LIST ---
+<!-- AUTO-GENERATED:START -->
+<!-- AUTO-GENERATED:END -->
