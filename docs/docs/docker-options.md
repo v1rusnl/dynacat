@@ -80,8 +80,6 @@ pages:
             update-interval: 0s  # Disables automatic updates
 ```
 
-An `update-interval` of `0s` will disable automatic client-side polling for that widget.
-
 ### Browser-side Control
 
 The global page update interval can be disabled by:
@@ -97,3 +95,9 @@ The global page update interval can be disabled by:
 > [!NOTE]
 >
 > Some widgets like monitor and docker-containers have built-in default update intervals (typically 2 minutes) that are used if `update-interval` is not specified.
+
+### Disable automatic updates
+
+| Variable | Default | Description |
+| -------- | ------- | ----------- |
+| `ENABLE_DYNAMIC_UPDATE` | `true` | Set to `false`, `0`, or `f` to disable automatic widget refresh. Useful for static views or default glance behaviour. |
