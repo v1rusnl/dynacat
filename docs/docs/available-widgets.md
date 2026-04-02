@@ -14,4 +14,12 @@ Community-made widgets for Dynacat. These are hosted separately in the [dynawidg
 <!-- AUTO-GENERATED:START -->
 <!-- AUTO-GENERATED:END -->
 <!-- AUTO-GENERATED:END -->
+<!-- AUTO-GENERATED:START -->
+<!-- AUTO-GENERATED:START -->
+<!-- AUTO-GENERATED:END -->
+<!-- AUTO-GENERATED:START -->
+<!-- AUTO-GENERATED:START -->
+<!-- AUTO-GENERATED:END -->
+<!-- AUTO-GENERATED:END -->
+<!-- AUTO-GENERATED:END -->
 <!-- AUTO-GENERATED:END -->
