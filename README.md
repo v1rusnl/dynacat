@@ -1,7 +1,6 @@
 <p align="center"><img width="250px" src="docs/docs/logo.png"></p>
 <h1 align="center">Dynacat</h1>
 <p align="center">
-  <a href="https://dynacat.artur.zone/">Website</a> •
   <a href="https://dynacat.artur.zone/configuration">Configuration</a> •
   <a href="https://discord.gg/mUqTzrfjFP">Discord</a> •
   <a href="https://www.paypal.com/paypalme/imartur">Sponsor</a> 

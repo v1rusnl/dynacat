@@ -233,6 +233,8 @@ html, body {
 
 html {
   scroll-behavior: auto;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -1789,6 +1791,15 @@ body {
 /* ─── Topbar / mobile ────────────────────────────────────────────────────── */
 
 @media (max-width: 768px) {
+  .md-content pre code,
+  .md-content table,
+  .md-content th,
+  .md-content td,
+  .md-content code:not(pre code) {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
   .main.is-home .topbar {
     display: flex;
   }

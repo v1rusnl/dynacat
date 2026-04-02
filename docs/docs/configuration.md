@@ -1149,6 +1149,83 @@ parameters:
     - item2
 ```
 
+### Dynawidgets
+
+Display widgets from the [Dynawidgets community repository](https://github.com/Panonim/dynawidgets). These are pre-built templates that only require you to specify the widget slug and optional configuration.
+
+> [!NOTE]
+>
+> Dynawidgets widgets are built by the community and leverage the custom-api widget system under the hood. Templates are automatically downloaded and cached locally.
+
+Examples:
+
+<details>
+<summary>View <code>dynacat.yml</code></summary>
+<br>
+
+```yaml
+- type: dynawidgets
+  widget: daily-chess-puzzle
+```
+
+</details>
+<br>
+
+<details>
+<summary>View <code>dynacat.yml</code> with custom title and options</summary>
+<br>
+
+```yaml
+- type: dynawidgets
+  widget: daily-chess-puzzle
+  title: Chess Challenge
+  cache: 1d
+```
+
+</details>
+
+#### Properties
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| widget | string | yes | |
+| repo | string | no | main |
+| url | string | no | |
+| headers | key (string) & value (string) | no | |
+| method | string | no | GET |
+| body-type | string | no | json |
+| body | any | no | |
+| frameless | boolean | no | false |
+| allow-insecure | boolean | no | false |
+| skip-json-validation | boolean | no | false |
+| options | map | no | |
+| parameters | key (string) & value (string|array) | no | |
+| subrequests | map of requests | no | |
+
+##### `widget`
+The slug of the widget from the dynawidgets repository. This is the only required property. The widget template will be automatically fetched and cached to `/app/assets/dynawidgets/{widget}.txt`. Example:
+
+```yaml
+widget: daily-chess-puzzle
+```
+
+##### `repo`
+The branch/repository to fetch the widget from. This allows you to test widgets from different branches or forks. Defaults to `main`. Example:
+
+```yaml
+widget: daily-chess-puzzle
+repo: testing/main
+```
+
+This will fetch from `https://raw.githubusercontent.com/Panonim/dynawidgets/refs/heads/testing/main/...`
+
+##### `url`, `headers`, `method`, `body-type`, `body`, `frameless`, `allow-insecure`, `skip-json-validation`
+These properties work the same as in the [custom-api widget](#custom-api). They override the default values defined in the widget's template `required` section.
+
+##### `options`, `parameters`, `subrequests`
+These properties work the same as in the [custom-api widget](#custom-api) and allow you to customize the widget's behavior and appearance.
+
+Learn more about building and contributing widgets in the [Contributing to Dynawidgets](contributing.md) guide.
+
 ### DNS Stats
 Display statistics from a self-hosted ad-blocking DNS resolver such as AdGuard Home, Pi-hole, or Technitium.
 
