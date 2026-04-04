@@ -86,13 +86,14 @@ func (widget *customAPIWidget) initialize() error {
 }
 
 func (widget *customAPIWidget) update(ctx context.Context) {
-	compiledHTML, err := fetchAndRenderCustomAPIRequest(
+	compiledHTML, hidden, err := fetchAndRenderCustomAPIRequest(
 		widget.CustomAPIRequest, widget.Subrequests, widget.Options, widget.compiledTemplate,
 	)
 	if !widget.canContinueUpdateAfterHandlingErr(err) {
 		return
 	}
 
+	widget.Hidden = hidden
 	widget.CompiledHTML = compiledHTML
 }
 
@@ -285,12 +286,14 @@ func fetchCustomAPIResponse(ctx context.Context, req *CustomAPIRequest) (*custom
 	}, nil
 }
 
+const customAPIHideWidgetSentinel = "\x00__dynacat_hide_widget__\x00"
+
 func fetchAndRenderCustomAPIRequest(
 	primaryReq *CustomAPIRequest,
 	subReqs map[string]*CustomAPIRequest,
 	options customAPIOptions,
 	tmpl *template.Template,
-) (template.HTML, error) {
+) (template.HTML, bool, error) {
 	var primaryData *customAPIResponseData
 	subData := make(map[string]*customAPIResponseData, len(subReqs))
 	var err error
@@ -345,7 +348,7 @@ func fetchAndRenderCustomAPIRequest(
 	emptyBody := template.HTML("")
 
 	if err != nil {
-		return emptyBody, err
+		return emptyBody, false, err
 	}
 
 	data := customAPITemplateData{
@@ -357,10 +360,16 @@ func fetchAndRenderCustomAPIRequest(
 	var templateBuffer bytes.Buffer
 	err = tmpl.Execute(&templateBuffer, &data)
 	if err != nil {
-		return emptyBody, err
+		return emptyBody, false, err
 	}
 
-	return template.HTML(templateBuffer.String()), nil
+	output := templateBuffer.String()
+	hidden := strings.Contains(output, customAPIHideWidgetSentinel)
+	if hidden {
+		output = strings.ReplaceAll(output, customAPIHideWidgetSentinel, "")
+	}
+
+	return template.HTML(output), hidden, nil
 }
 
 type decoratedGJSONResult struct {
@@ -687,6 +696,9 @@ var customAPITemplateFuncs = func() template.FuncMap {
 			}
 
 			return data
+		},
+		"hide": func() template.HTML {
+			return template.HTML(customAPIHideWidgetSentinel)
 		},
 	}
 

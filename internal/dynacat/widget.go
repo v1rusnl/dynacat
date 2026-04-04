@@ -164,6 +164,7 @@ type widgetBase struct {
 	TitleIcon           customIconField      `yaml:"title-icon"`
 	TitleURL            string               `yaml:"title-url"`
 	HideHeader          bool                 `yaml:"hide-header"`
+	Hidden              bool                 `yaml:"-"`
 	CSSClass            string               `yaml:"css-class"`
 	CustomCacheDuration durationField        `yaml:"cache"`
 	UpdateInterval      *updateIntervalField `yaml:"update-interval"`

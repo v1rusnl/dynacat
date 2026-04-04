@@ -944,6 +944,11 @@ async function updateWidget(widgetElement) {
     const collapsibleContainerStates = getCollapsibleContainerStates(widgetElement);
     const newWidget = await fetchWidgetContent(widgetElement);
 
+    if (newWidget) {
+        const isHidden = newWidget.dataset.widgetHidden === 'true';
+        widgetElement.style.display = isHidden ? 'none' : '';
+    }
+
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
         const oldContent = widgetElement.querySelector('.widget-content');
         const newContent = newWidget.querySelector('.widget-content');
