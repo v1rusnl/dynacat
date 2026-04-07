@@ -178,6 +178,10 @@ icon: auto-invert sh:dynacat-dark # with a selfh.st icon
 
 This expects the icon to be black and will automatically invert it to white when using a dark theme.
 
+The same icon syntax and prefixes also work for `title-icon`.
+
+If an icon URL cannot be loaded (for example, the file does not exist or the host is unreachable), Dynacat will hide the icon and render the widget as if no icon was configured.
+
 ## Config schema
 
 For property descriptions, validation and autocompletion of the config within your IDE, @not-first has kindly created a [schema](https://github.com/not-first/dynacat-schema). Massive thanks to them for this, go check it out and give them a star!
@@ -315,12 +319,12 @@ To be able to point to an asset from your assets path, use the `/assets/` path l
 
 ```yaml
 icon: /assets/gitea-icon.png
+```
 
 #### `cache-dir`
 Directory where Dynacat stores cached remote images (for example, widget icons). Cached files are served from `/.cache/` with long cache headers so browsers reuse them without refetching from the original host.
 
 If the path is relative, it will be resolved relative to the Dynacat working directory. The directory will be created if it does not exist.
-```
 
 #### `db-path`
 Path to the SQLite database file used for server-side todo storage. Only required when at least one `to-do` widget has `storage: server` set. If the path is relative, it will be resolved relative to the Dynacat working directory. The file will be created if it does not exist.
