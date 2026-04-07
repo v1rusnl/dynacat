@@ -161,6 +161,7 @@ type widgetBase struct {
 	Providers           *widgetProviders     `yaml:"-"`
 	Type                string               `yaml:"type"`
 	Title               string               `yaml:"title"`
+	TitleIcon           customIconField      `yaml:"title-icon"`
 	TitleURL            string               `yaml:"title-url"`
 	HideHeader          bool                 `yaml:"hide-header"`
 	CSSClass            string               `yaml:"css-class"`
@@ -255,6 +256,7 @@ func (w *widgetBase) GetType() string {
 
 func (w *widgetBase) setProviders(providers *widgetProviders) {
 	w.Providers = providers
+	w.TitleIcon.prepare(providers)
 }
 
 func (w *widgetBase) IsDynamicUpdateEnabled() bool {

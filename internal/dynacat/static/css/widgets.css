@@ -75,6 +75,18 @@
     gap: 1rem;
 }
 
+.widget-title-wrapper {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.widget-title-icon {
+    width: 1.4rem;
+    height: 1.4rem;
+    flex-shrink: 0;
+}
+
 .widget-beta-icon {
     width: 1.6rem;
     height: 1.6rem;

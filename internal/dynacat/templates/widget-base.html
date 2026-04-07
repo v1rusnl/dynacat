@@ -7,9 +7,9 @@
     {{- if not .HideHeader }}
     <div class="widget-header">
         {{- if ne "" .TitleURL }}
-        <h2><a href="{{ .TitleURL | safeURL }}" target="_blank" rel="noreferrer" class="uppercase">{{ .Title }}</a></h2>
+        <h2><a href="{{ .TitleURL | safeURL }}" target="_blank" rel="noreferrer" class="uppercase widget-title-wrapper">{{ if ne "" .TitleIcon.URL }}<img class="widget-title-icon{{ if .TitleIcon.AutoInvert }} flat-icon{{ end }}" src="{{ .TitleIcon.URL }}" alt="" loading="lazy">{{ end }}<span>{{ .Title }}</span></a></h2>
         {{- else }}
-        <h2 class="uppercase">{{ .Title }}</h2>
+        <h2 class="uppercase widget-title-wrapper">{{ if ne "" .TitleIcon.URL }}<img class="widget-title-icon{{ if .TitleIcon.AutoInvert }} flat-icon{{ end }}" src="{{ .TitleIcon.URL }}" alt="" loading="lazy">{{ end }}<span>{{ .Title }}</span></h2>
         {{- end }}
         {{- if .IsWIP }}
         <div data-popover-type="html" data-popover-position="above">

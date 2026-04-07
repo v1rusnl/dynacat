@@ -150,6 +150,21 @@ icon: di:immich # di for Dashboard icons https://github.com/homarr-labs/dashboar
 icon: mdi:camera # mdi for Material Design icons https://pictogrammers.com/library/mdi/
 ```
 
+You can also add an icon next to a widget title using `title-icon`:
+
+```yaml
+- type: custom-api
+  title: Todoist
+  title-icon: di:todoist
+```
+
+If you self-host icons through your configured `assets-path`, both `icon` and `title-icon` support that as well:
+
+```yaml
+icon: /assets/icons/todoist.png
+title-icon: /assets/icons/todoist.png
+```
+
 > [!NOTE]
 >
 > The icons are loaded externally and are hosted on `cdn.jsdelivr.net`, if you do not wish to depend on a 3rd party you are free to download the icons individually and host them locally.

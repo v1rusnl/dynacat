@@ -359,7 +359,10 @@ function setupLazyImages() {
                     const fallbackSrc = image.dataset.fallbackSrc;
                     if (fallbackSrc && image.src !== fallbackSrc) {
                         image.src = fallbackSrc;
+                        return;
                     }
+
+                    image.style.display = "none";
                 };
 
                 if (image.complete) {
