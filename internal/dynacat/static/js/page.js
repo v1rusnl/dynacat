@@ -1314,6 +1314,10 @@ function handleWidgetPollingVisibilityChange() {
 }
 
 function setupWidgetPolling() {
+    if (!pageData.dynamicUpdateEnabled) {
+        return;
+    }
+
     const pollingWidgets = document.querySelectorAll('.widget[data-update-interval]');
     const seenWidgets = new Set();
 

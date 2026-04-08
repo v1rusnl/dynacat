@@ -79,6 +79,7 @@ type user struct {
 type page struct {
 	Title                  string  `yaml:"name"`
 	Slug                   string  `yaml:"slug"`
+	DynamicUpdates         *bool   `yaml:"dynamic-updates"`
 	Width                  string  `yaml:"width"`
 	DesktopNavigationWidth string  `yaml:"desktop-navigation-width"`
 	ShowMobileHeader       bool    `yaml:"show-mobile-header"`
@@ -92,6 +93,10 @@ type page struct {
 	} `yaml:"columns"`
 	PrimaryColumnIndex int8       `yaml:"-"`
 	mu                 sync.Mutex `yaml:"-"`
+}
+
+func (p *page) DynamicUpdatesEnabled() bool {
+	return p.DynamicUpdates == nil || *p.DynamicUpdates
 }
 
 func newConfigFromYAML(contents []byte) (*config, error) {

@@ -14,7 +14,6 @@
     { "id": "preconfigured-pages", "title": "Preconfigured Pages", "file": "docs/preconfigured-pages.md" },
     { "id": "themes", "title": "Themes", "file": "docs/themes.md" },
     { "section": "dynawidgets" },
-    { "id": "available-widgets", "title": "Available Widgets", "file": "docs/available-widgets.md" },
     { "id": "contributing", "title": "Contributing", "file": "docs/contributing.md" }
   ]
 }

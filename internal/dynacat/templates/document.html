@@ -11,7 +11,7 @@
         /*{{ end }}*/
         baseURL: "{{ .App.Config.Server.BaseURL }}",
         theme: "{{ .Request.Theme.Key }}",
-        dynamicUpdateEnabled: {{ .App.DynamicUpdateEnabled }},
+        dynamicUpdateEnabled: {{ if .Page }}{{ and .App.DynamicUpdateEnabled (.Page.DynamicUpdatesEnabled) }}{{ else }}{{ .App.DynamicUpdateEnabled }}{{ end }},
     };
     </script>
     <title>{{ block "document-title" . }}{{ end }}</title>

@@ -384,6 +384,10 @@ func (p *page) updateOutdatedWidgets() {
 }
 
 func (p *page) GetMinUpdateInterval() int64 {
+	if !p.DynamicUpdatesEnabled() {
+		return 0
+	}
+
 	min, found := getMinUpdateIntervalForWidgets(p.HeadWidgets)
 
 	for c := range p.Columns {

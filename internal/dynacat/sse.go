@@ -161,6 +161,10 @@ func (a *application) sseCheckAndPushUpdates(ctx context.Context) {
 			continue
 		}
 
+		if !pg.DynamicUpdatesEnabled() {
+			continue
+		}
+
 		wg.Add(1)
 		go func(w widget, pg *page) {
 			defer wg.Done()

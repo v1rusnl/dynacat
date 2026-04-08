@@ -529,6 +529,7 @@ pages:
 | ---- | ---- | -------- | ------- |
 | name | string | yes | |
 | slug | string | no | |
+| dynamic-updates | boolean | no | true |
 | width | string | no | |
 | desktop-navigation-width | string | no | |
 | center-vertically | boolean | no | false |
@@ -543,6 +544,23 @@ The name of the page which gets shown in the navigation bar.
 
 #### `slug`
 The URL friendly version of the title which is used to access the page. For example if the title of the page is "RSS Feeds" you can make the page accessible via `localhost:8080/feeds` by setting the slug to `feeds`. If not defined, it will automatically be generated from the title.
+
+#### `dynamic-updates`
+Controls whether automatic dynamic updates are enabled for this page. Defaults to `true`.
+
+When set to `false`, the page will not perform automatic dynamic refreshes (SSE updates, page-level polling, and widget `update-interval` polling).
+
+Example:
+
+```yaml
+pages:
+  - name: "Home Page"
+    slug: home
+    dynamic-updates: false
+    columns:
+      - size: full
+        widgets: ...
+```
 
 #### `width`
 The maximum width of the page on desktop. Possible values are `default`, `slim` and `wide`.
