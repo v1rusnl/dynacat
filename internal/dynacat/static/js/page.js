@@ -945,12 +945,12 @@ async function updateWidget(widgetElement) {
     const newWidget = await fetchWidgetContent(widgetElement);
 
     if (newWidget) {
-        if (newWidget.dataset.widgetHidden === 'true') {
-            widgetElement.dataset.widgetHidden = 'true';
+        if (newWidget.dataset.widgetHidden === "true") {
+            widgetElement.dataset.widgetHidden = "true";
         } else {
-            delete widgetElement.dataset.widgetHidden;
+            widgetElement.removeAttribute("data-widget-hidden");
         }
-    }
+}
 
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
         const oldContent = widgetElement.querySelector('.widget-content');
@@ -1397,10 +1397,10 @@ async function applyContentUpdate() {
                         oldHeader.innerHTML = newHeader.innerHTML;
                     }
 
-                    if (tempWidget.dataset.widgetHidden === 'true') {
-                        realWidget.dataset.widgetHidden = 'true';
+                    if (tempWidget.dataset.widgetHidden === "true") {
+                        realWidget.dataset.widgetHidden = "true";
                     } else {
-                        delete realWidget.dataset.widgetHidden;
+                        realWidget.removeAttribute("data-widget-hidden");
                     }
 
                     anyReplaced = true;
