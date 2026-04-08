@@ -86,6 +86,7 @@ func (widget *customAPIWidget) initialize() error {
 }
 
 func (widget *customAPIWidget) update(ctx context.Context) {
+	widget.Hidden = false
 	compiledHTML, hidden, err := fetchAndRenderCustomAPIRequest(
 		widget.CustomAPIRequest, widget.Subrequests, widget.Options, widget.compiledTemplate,
 	)

@@ -106,13 +106,15 @@ func (widget *dynawidgetsWidget) initialize() error {
 }
 
 func (widget *dynawidgetsWidget) update(ctx context.Context) {
-	compiledHTML, err := fetchAndRenderCustomAPIRequest(
+	widget.Hidden = false
+	compiledHTML, hidden, err := fetchAndRenderCustomAPIRequest(
 		widget.CustomAPIRequest, widget.Subrequests, widget.Options, widget.compiledTemplate,
 	)
 	if !widget.canContinueUpdateAfterHandlingErr(err) {
 		return
 	}
 
+	widget.Hidden = hidden
 	widget.CompiledHTML = compiledHTML
 }
 

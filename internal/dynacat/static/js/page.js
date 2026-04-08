@@ -945,8 +945,11 @@ async function updateWidget(widgetElement) {
     const newWidget = await fetchWidgetContent(widgetElement);
 
     if (newWidget) {
-        const isHidden = newWidget.dataset.widgetHidden === 'true';
-        widgetElement.style.display = isHidden ? 'none' : '';
+        if (newWidget.dataset.widgetHidden === 'true') {
+            widgetElement.dataset.widgetHidden = 'true';
+        } else {
+            delete widgetElement.dataset.widgetHidden;
+        }
     }
 
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
@@ -1392,6 +1395,12 @@ async function applyContentUpdate() {
                     const newHeader = tempWidget.querySelector('.widget-header');
                     if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
                         oldHeader.innerHTML = newHeader.innerHTML;
+                    }
+
+                    if (tempWidget.dataset.widgetHidden === 'true') {
+                        realWidget.dataset.widgetHidden = 'true';
+                    } else {
+                        delete realWidget.dataset.widgetHidden;
                     }
 
                     anyReplaced = true;
