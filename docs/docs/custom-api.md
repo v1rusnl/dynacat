@@ -345,6 +345,18 @@ You can also access the response headers:
 
 <hr>
 
+If a response indicates there is nothing useful to show, you can hide the entire widget from within the template using `hide`:
+
+```html
+{{ if eq .Response.StatusCode 204 }}
+  {{ hide }}
+{{ else }}
+  <p>{{ .JSON.String "message" }}</p>
+{{ end }}
+```
+
+<hr>
+
 JSON response:
 
 ```json
@@ -473,6 +485,7 @@ The following functions are available on the `Options` object:
 
 The following helper functions provided by Dynacat are available:
 
+- `hide() template.HTML`: Hides the current `custom-api` widget for this render. Useful when an API response should not be displayed (for example, a `204 No Content` response).
 - `toFloat(i int) float`: Converts an integer to a float.
 - `toInt(f float) int`: Converts a float to an integer.
 - `toRelativeTime(t time.Time) template.HTMLAttr`: Converts Time to a relative time such as 2h, 1d, etc which dynamically updates. **NOTE:** the value of this function should be used as an attribute in an HTML tag, e.g. `<span {{ toRelativeTime .Time }}></span>`.
