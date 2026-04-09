@@ -19,6 +19,10 @@
 
 @import "forum-posts.css";
 
+.widget[data-widget-hidden="true"] {
+    display: none;
+}
+
 .widget-error-header {
     display: flex;
     align-items: center;

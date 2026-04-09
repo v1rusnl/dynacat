@@ -3,6 +3,7 @@
      {{ if and .UpdateInterval (.IsDynamicUpdateEnabled) }}
      data-update-interval="{{ .UpdateInterval.Milliseconds }}"
      {{ end }}
+     {{ if .Hidden }}data-widget-hidden="true"{{ end }}
      {{ block "widget-data-attrs" . }}{{ end }}>
     {{- if not .HideHeader }}
     <div class="widget-header">

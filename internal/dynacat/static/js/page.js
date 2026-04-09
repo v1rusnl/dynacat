@@ -944,6 +944,14 @@ async function updateWidget(widgetElement) {
     const collapsibleContainerStates = getCollapsibleContainerStates(widgetElement);
     const newWidget = await fetchWidgetContent(widgetElement);
 
+    if (newWidget) {
+        if (newWidget.dataset.widgetHidden === "true") {
+            widgetElement.dataset.widgetHidden = "true";
+        } else {
+            widgetElement.removeAttribute("data-widget-hidden");
+        }
+}
+
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
         const oldContent = widgetElement.querySelector('.widget-content');
         const newContent = newWidget.querySelector('.widget-content');
@@ -1391,6 +1399,12 @@ async function applyContentUpdate() {
                     const newHeader = tempWidget.querySelector('.widget-header');
                     if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
                         oldHeader.innerHTML = newHeader.innerHTML;
+                    }
+
+                    if (tempWidget.dataset.widgetHidden === "true") {
+                        realWidget.dataset.widgetHidden = "true";
+                    } else {
+                        realWidget.removeAttribute("data-widget-hidden");
                     }
 
                     anyReplaced = true;
