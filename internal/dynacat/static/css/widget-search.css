@@ -41,6 +41,10 @@
     border-color: var(--color-primary);
 }
 
+.search-form {
+    display: contents;
+}
+
 .search-input {
     border: 0;
     background: none;

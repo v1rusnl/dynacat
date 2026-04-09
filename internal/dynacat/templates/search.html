@@ -16,7 +16,9 @@
         </svg>
     </div>
 
-    <input class="search-input" type="text" placeholder="{{ .Placeholder }}" autocomplete="off"{{ if .Autofocus }} autofocus{{ end }}>
+    <form class="search-form" action="javascript:void(0)">
+        <input class="search-input" type="text" placeholder="{{ .Placeholder }}" autocomplete="off" enterkeyhint="search"{{ if .Autofocus }} autofocus{{ end }}>
+    </form>
 
     <div class="search-bang"></div>
     <kbd class="hide-on-mobile" title="Press [S] to focus the search input">S</kbd>

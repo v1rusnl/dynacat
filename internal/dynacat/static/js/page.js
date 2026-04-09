@@ -114,6 +114,7 @@ function setupSearchBoxes() {
         const defaultSearchUrl = widget.dataset.defaultSearchUrl;
         const target = widget.dataset.target || "_blank";
         const newTab = widget.dataset.newTab === "true";
+        const formElement = widget.getElementsByClassName("search-form")[0];
         const inputElement = widget.getElementsByClassName("search-input")[0];
         const bangElement = widget.getElementsByClassName("search-bang")[0];
         const bangs = widget.querySelectorAll(".search-bangs > input");
@@ -127,6 +128,34 @@ function setupSearchBoxes() {
             bangsMap[bang.dataset.shortcut] = bang;
         }
 
+        const submitSearch = (openInNewTab) => {
+            const input = inputElement.value.trim();
+            let query;
+            let searchUrlTemplate;
+
+            if (currentBang != null) {
+                query = input.slice(currentBang.dataset.shortcut.length + 1);
+                searchUrlTemplate = currentBang.dataset.url;
+            } else {
+                query = input;
+                searchUrlTemplate = defaultSearchUrl;
+            }
+            if (query.length == 0 && currentBang == null) {
+                return;
+            }
+
+            const url = searchUrlTemplate.replace("!QUERY!", encodeURIComponent(query));
+
+            if (openInNewTab) {
+                window.open(url, target).focus();
+            } else {
+                window.location.href = url;
+            }
+
+            lastQuery = query;
+            inputElement.value = "";
+        };
+
         const handleKeyDown = (event) => {
             if (event.key == "Escape") {
                 inputElement.blur();
@@ -134,32 +163,8 @@ function setupSearchBoxes() {
             }
 
             if (event.key == "Enter") {
-                const input = inputElement.value.trim();
-                let query;
-                let searchUrlTemplate;
-
-                if (currentBang != null) {
-                    query = input.slice(currentBang.dataset.shortcut.length + 1);
-                    searchUrlTemplate = currentBang.dataset.url;
-                } else {
-                    query = input;
-                    searchUrlTemplate = defaultSearchUrl;
-                }
-                if (query.length == 0 && currentBang == null) {
-                    return;
-                }
-
-                const url = searchUrlTemplate.replace("!QUERY!", encodeURIComponent(query));
-
-                if (newTab && !event.ctrlKey || !newTab && event.ctrlKey) {
-                    window.open(url, target).focus();
-                } else {
-                    window.location.href = url;
-                }
-
-                lastQuery = query;
-                inputElement.value = "";
-
+                const openInNewTab = newTab && !event.ctrlKey || !newTab && event.ctrlKey;
+                submitSearch(openInNewTab);
                 return;
             }
 
@@ -168,6 +173,11 @@ function setupSearchBoxes() {
                 return;
             }
         };
+
+        formElement.addEventListener("submit", (event) => {
+            event.preventDefault();
+            submitSearch(newTab);
+        });
 
         const changeCurrentBang = (bang) => {
             currentBang = bang;
