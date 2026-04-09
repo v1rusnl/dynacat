@@ -2527,7 +2527,7 @@ Preview:
 >
 > This widget is currently under development, some features might not function as expected or may change.
 
-To display data from a remote server you need to have the Dynacat Agent running on that server. You can download the agent from [here](https://github.com/dynacat/agent), though keep in mind that it is still in development and may not work as expected. Support for other providers such as Dynacats will be added in the future.
+To display data from a remote server you need to have the Dynacat Agent running on that server. You can download the agent from [here](https://github.com/glanceapp/agent), though keep in mind that it is still in development and may not work as expected. Support for other providers such as Dynacats will be added in the future.
 
 In the event that the CPU temperature goes over 80°C, a flame icon will appear next to the CPU. The progress indicators will also turn red (or the equivalent of your negative color) to hopefully grab your attention if anything is unusually high:
 
