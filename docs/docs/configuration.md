@@ -186,67 +186,6 @@ If an icon URL cannot be loaded (for example, the file does not exist or the hos
 
 For property descriptions, validation and autocompletion of the config within your IDE, @not-first has kindly created a [schema](https://github.com/not-first/dynacat-schema). Massive thanks to them for this, go check it out and give them a star!
 
-## Authentication
-
-To make sure that only you and the people you want to share your dashboard with have access to it, you can set up authentication via username and password. This is done through a top level `auth` property. Example:
-
-```yaml
-auth:
-  secret-key: # this must be set to a random value generated using the secret:make CLI command
-  users:
-    admin:
-      password: 123456
-    svilen:
-      password: 123456
-```
-
-To generate a secret key, run the following command:
-
-```sh
-./dynacat secret:make
-```
-
-Or with Docker:
-
-```sh
-docker run --rm Panonim/dynacat secret:make
-```
-
-### Using hashed passwords
-
-If you do not want to store plain passwords in your config file or in environment variables, you can hash your password and provide its hash instead:
-
-```sh
-./dynacat password:hash mysecretpassword
-```
-
-Or with Docker:
-
-```sh
-docker run --rm Panonim/dynacat password:hash mysecretpassword
-```
-
-Then, in your config file use the `password-hash` property instead of `password`:
-
-```yaml
-auth:
-  secret-key: # this must be set to a random value generated using the secret:make CLI command
-  users:
-    admin:
-      password-hash: $2a$10$o6SXqiccI3DDP2dN4ADumuOeIHET6Q4bUMYZD6rT2Aqt6XQ3DyO.6
-```
-
-### Preventing brute-force attacks
-
-Dynacat will automatically block IP addresses of users who fail to authenticate 5 times in a row in the span of 5 minutes. In order for this feature to work correctly, Dynacat must know the real IP address of requests. If you're using a reverse proxy such as nginx, Traefik, NPM, etc, you must set the `proxied` property in the `server` configuration to `true`:
-
-```yaml
-server:
-  proxied: true
-```
-
-When set to `true`, Dynacat will use the `X-Forwarded-For` header to determine the original IP address of the request, so make sure that your reverse proxy is correctly configured to send that header.
-
 ## Server
 Server configuration is done through a top level `server` property. Example:
 

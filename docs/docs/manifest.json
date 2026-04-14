@@ -4,6 +4,7 @@
     { "id": "comparison", "title": "Comparison", "file": "docs/comparison.md" },
     { "id": "search", "title": "Search", "file": "docs/search.md" },
     { "section": "reference" },
+    { "id": "authentication", "title": "Authentication", "file": "docs/authentication.md" },
     { "id": "configuration", "title": "Configuration", "file": "docs/configuration.md" },
     { "id": "custom-api", "title": "Custom API", "file": "docs/custom-api.md" },
     { "id": "default-rates", "title": "Default Update Rates", "file": "docs/default_rates.md" },

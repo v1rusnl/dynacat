@@ -17,7 +17,9 @@ import (
 	"sync"
 	"time"
 
+	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 )
 
 var (
@@ -29,7 +31,7 @@ var (
 const STATIC_ASSETS_CACHE_DURATION = 24 * time.Hour
 const REMOTE_IMAGE_CACHE_DURATION = 7 * 24 * time.Hour
 
-var reservedPageSlugs = []string{"login", "logout"}
+var reservedPageSlugs = []string{"login", "logout", "callback"}
 
 type imageProxyInfo struct {
 	URL           string
@@ -48,10 +50,17 @@ type application struct {
 	widgetToPage map[uint64]*page
 
 	RequiresAuth           bool
+	OIDCEnabled            bool
+	PasswordEnabled        bool
 	authSecretKey          []byte
 	usernameHashToUsername map[string]string
 	authAttemptsMu         sync.Mutex
 	failedAuthAttempts     map[string]*failedAuthAttempt
+
+	oidcProvider *gooidc.Provider
+	oidcVerifier *gooidc.IDTokenVerifier
+	oauth2Config *oauth2.Config
+	oidcSessions *sessionStore
 
 	todoStorage *todoStorage
 
@@ -82,7 +91,8 @@ func newApplication(c *config) (*application, error) {
 	// Init auth
 	//
 
-	if len(config.Auth.Users) > 0 {
+	hasAnyAuth := len(config.Auth.Users) > 0 || config.Auth.OIDC != nil
+	if hasAnyAuth {
 		secretBytes, err := base64.StdEncoding.DecodeString(config.Auth.SecretKey)
 		if err != nil {
 			return nil, fmt.Errorf("decoding secret-key: %v", err)
@@ -92,13 +102,23 @@ func newApplication(c *config) (*application, error) {
 			return nil, fmt.Errorf("secret-key must be exactly %d bytes", AUTH_SECRET_KEY_LENGTH)
 		}
 
-		app.usernameHashToUsername = make(map[string]string)
+		app.authSecretKey = secretBytes
 		app.failedAuthAttempts = make(map[string]*failedAuthAttempt)
-		app.RequiresAuth = true
+
+		requireAuth := true
+		if config.Auth.RequireAuth != nil {
+			requireAuth = *config.Auth.RequireAuth
+		}
+		app.RequiresAuth = requireAuth
+	}
+
+	if len(config.Auth.Users) > 0 && !config.Auth.DisablePassword {
+		app.PasswordEnabled = true
+		app.usernameHashToUsername = make(map[string]string)
 
 		for username := range config.Auth.Users {
 			user := config.Auth.Users[username]
-			usernameHash, err := computeUsernameHash(username, secretBytes)
+			usernameHash, err := computeUsernameHash(username, app.authSecretKey)
 			if err != nil {
 				return nil, fmt.Errorf("computing username hash for user %s: %v", username, err)
 			}
@@ -117,8 +137,18 @@ func newApplication(c *config) (*application, error) {
 				user.PasswordHash = hashedPassword
 			}
 		}
+	}
 
-		app.authSecretKey = secretBytes
+	if config.Auth.OIDC != nil {
+		provider, verifier, oauth2Cfg, err := initOIDCProvider(config.Auth.OIDC)
+		if err != nil {
+			return nil, fmt.Errorf("initializing OIDC: %v", err)
+		}
+		app.oidcProvider = provider
+		app.oidcVerifier = verifier
+		app.oauth2Config = oauth2Cfg
+		app.oidcSessions = newSessionStore()
+		app.OIDCEnabled = true
 	}
 
 	//
@@ -452,9 +482,12 @@ type templateRequestData struct {
 }
 
 type templateData struct {
-	App     *application
-	Page    *page
-	Request templateRequestData
+	App             *application
+	Page            *page
+	Request         templateRequestData
+	AuthUser        *authenticatedUser
+	AccessiblePages []*page
+	OIDCError       string
 }
 
 func (a *application) populateTemplateRequestData(data *templateRequestData, r *http.Request) {
@@ -473,6 +506,24 @@ func (a *application) populateTemplateRequestData(data *templateRequestData, r *
 	data.Theme = theme
 }
 
+func (a *application) getAccessiblePages(user *authenticatedUser) []*page {
+	pages := make([]*page, 0, len(a.Config.Pages))
+	for i := range a.Config.Pages {
+		p := &a.Config.Pages[i]
+		if user == nil {
+			// Unauthenticated: only pages with no restrictions (when RequireAuth is false)
+			if len(p.AllowedUsers) == 0 && len(p.AllowedGroups) == 0 {
+				pages = append(pages, p)
+			}
+		} else {
+			if a.isUserAllowedOnPage(user, p) {
+				pages = append(pages, p)
+			}
+		}
+	}
+	return pages
+}
+
 func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) {
 	page, exists := a.slugToPage[r.PathValue("page")]
 	if !exists {
@@ -480,13 +531,16 @@ func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if a.handleUnauthorizedResponse(w, r, redirectToLogin) {
+	if a.handleAccessControl(w, r, page, redirectToLogin) {
 		return
 	}
 
+	user := a.getAuthenticatedUser(w, r)
 	data := templateData{
-		Page: page,
-		App:  a,
+		Page:            page,
+		App:             a,
+		AuthUser:        user,
+		AccessiblePages: a.getAccessiblePages(user),
 	}
 	a.populateTemplateRequestData(&data.Request, r)
 
@@ -508,7 +562,7 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+	if a.handleAccessControl(w, r, page, showUnauthorizedJSON) {
 		return
 	}
 
@@ -705,10 +759,18 @@ func (a *application) server() (func() error, func() error) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	if a.RequiresAuth {
+	if a.AnyAuthEnabled() {
 		mux.HandleFunc("GET /login", a.handleLoginPageRequest)
 		mux.HandleFunc("GET /logout", a.handleLogoutRequest)
+	}
+
+	if a.PasswordEnabled {
 		mux.HandleFunc("POST /api/authenticate", a.handleAuthenticationAttempt)
+	}
+
+	if a.OIDCEnabled {
+		mux.HandleFunc("GET /api/oidc/login", a.handleOIDCLogin)
+		mux.HandleFunc("GET /api/oidc/callback", a.handleOIDCCallback)
 	}
 
 	if a.todoStorage != nil {

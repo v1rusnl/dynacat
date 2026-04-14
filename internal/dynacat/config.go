@@ -39,8 +39,11 @@ type config struct {
 	} `yaml:"server"`
 
 	Auth struct {
-		SecretKey string           `yaml:"secret-key"`
-		Users     map[string]*user `yaml:"users"`
+		SecretKey       string           `yaml:"secret-key"`
+		RequireAuth     *bool            `yaml:"require-auth"`
+		DisablePassword bool             `yaml:"disable-password"`
+		Users           map[string]*user `yaml:"users"`
+		OIDC            *oidcConfig      `yaml:"oidc"`
 	} `yaml:"auth"`
 
 	Document struct {
@@ -70,6 +73,18 @@ type config struct {
 	Pages []page `yaml:"pages"`
 }
 
+type oidcConfig struct {
+	IssuerURL     string   `yaml:"issuer-url"`
+	ClientID      string   `yaml:"client-id"`
+	ClientSecret  string   `yaml:"client-secret"`
+	RedirectURL   string   `yaml:"redirect-url"`
+	Scopes        []string `yaml:"scopes"`
+	UsernameClaim string   `yaml:"username-claim"`
+	GroupsClaim   string   `yaml:"groups-claim"`
+	AllowedGroups []string `yaml:"allowed-groups"`
+	AllowedUsers  []string `yaml:"allowed-users"`
+}
+
 type user struct {
 	Password           string `yaml:"password"`
 	PasswordHashString string `yaml:"password-hash"`
@@ -91,6 +106,8 @@ type page struct {
 		Size    string  `yaml:"size"`
 		Widgets widgets `yaml:"widgets"`
 	} `yaml:"columns"`
+	AllowedUsers       []string   `yaml:"allowed-users"`
+	AllowedGroups      []string   `yaml:"allowed-groups"`
 	PrimaryColumnIndex int8       `yaml:"-"`
 	mu                 sync.Mutex `yaml:"-"`
 }
@@ -461,8 +478,29 @@ func isConfigStateValid(config *config) error {
 		return fmt.Errorf("no pages configured")
 	}
 
-	if len(config.Auth.Users) > 0 && config.Auth.SecretKey == "" {
-		return fmt.Errorf("secret-key must be set when users are configured")
+	hasAnyAuth := len(config.Auth.Users) > 0 || config.Auth.OIDC != nil
+	if hasAnyAuth && config.Auth.SecretKey == "" {
+		return fmt.Errorf("secret-key must be set when auth is configured")
+	}
+
+	if config.Auth.OIDC != nil {
+		oidc := config.Auth.OIDC
+		if oidc.IssuerURL == "" {
+			return fmt.Errorf("oidc: issuer-url is required")
+		}
+		if oidc.ClientID == "" {
+			return fmt.Errorf("oidc: client-id is required")
+		}
+		if oidc.ClientSecret == "" {
+			return fmt.Errorf("oidc: client-secret is required")
+		}
+		if oidc.RedirectURL == "" {
+			return fmt.Errorf("oidc: redirect-url is required")
+		}
+	}
+
+	if config.Auth.DisablePassword && config.Auth.OIDC == nil {
+		return fmt.Errorf("disable-password requires oidc to be configured")
 	}
 
 	for username := range config.Auth.Users {
