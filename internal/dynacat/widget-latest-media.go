@@ -42,19 +42,19 @@ type latestMediaHostConfig struct {
 }
 
 type latestMediaItem struct {
-	ServerType      string
-	ServerURL       string
-	Title           string
-	Year            int
-	MediaType       string
-	SeriesTitle     string
-	AddedAt         time.Time
-	Duration        int64
-	CoverURL        string
-	ThumbnailURL    string
-	LinkURL         string
-	TimeAgo         string
-	DurationStr     string
+	ServerType   string
+	ServerURL    string
+	Title        string
+	Year         int
+	MediaType    string
+	SeriesTitle  string
+	AddedAt      time.Time
+	Duration     int64
+	CoverURL     string
+	ThumbnailURL string
+	LinkURL      string
+	TimeAgo      string
+	DurationStr  string
 }
 
 func (widget *latestMediaWidget) initialize() error {
@@ -107,6 +107,9 @@ func (widget *latestMediaWidget) initialize() error {
 
 		host.ServerType = serverType
 		host.BaseURL = baseURL
+		if serverType != "plex" && serverType != "jellyfin" && serverType != "emby" {
+			return fmt.Errorf("unsupported host type for latest-media: %s", serverType)
+		}
 		widget.hostAllowInsecure[baseURL] = host.AllowInsecure
 	}
 
@@ -259,6 +262,11 @@ func (widget *latestMediaWidget) fetchPlexLatest(ctx context.Context, host *late
 	var items []latestMediaItem
 
 	for _, section := range sectionsResp.MediaContainer.Directory {
+		// Skip Plex music libraries so latest-media only shows video library additions.
+		if strings.EqualFold(section.Type, "artist") {
+			continue
+		}
+
 		// Filter by library names if specified
 		if len(host.Libraries) > 0 && !containsString(host.Libraries, section.Title) {
 			continue
@@ -324,14 +332,14 @@ func (widget *latestMediaWidget) fetchPlexLatest(ctx context.Context, host *late
 // --- Jellyfin / Emby ---
 
 type jellyfinLatestItem struct {
-	Id              string `json:"Id"`
-	Name            string `json:"Name"`
-	Type            string `json:"Type"`
-	ProductionYear  int    `json:"ProductionYear"`
-	DateCreated     string `json:"DateCreated"`
-	RunTimeTicks    int64  `json:"RunTimeTicks"`
-	SeriesName      string `json:"SeriesName"`
-	AlbumArtist     string `json:"AlbumArtist"`
+	Id             string `json:"Id"`
+	Name           string `json:"Name"`
+	Type           string `json:"Type"`
+	ProductionYear int    `json:"ProductionYear"`
+	DateCreated    string `json:"DateCreated"`
+	RunTimeTicks   int64  `json:"RunTimeTicks"`
+	SeriesName     string `json:"SeriesName"`
+	AlbumArtist    string `json:"AlbumArtist"`
 }
 
 type jellyfinUserViewsResponse struct {
@@ -437,6 +445,10 @@ func (widget *latestMediaWidget) fetchJellyfinEmbyLatestFromParent(
 
 	var items []latestMediaItem
 	for _, raw := range rawItems {
+		if isJellyfinEmbyMusicType(raw.Type) {
+			continue
+		}
+
 		addedAt, _ := time.Parse(time.RFC3339, raw.DateCreated)
 		if addedAt.IsZero() {
 			addedAt, _ = time.Parse("2006-01-02T15:04:05.0000000Z", raw.DateCreated)
@@ -487,6 +499,15 @@ func containsString(slice []string, s string) bool {
 		}
 	}
 	return false
+}
+
+func isJellyfinEmbyMusicType(mediaType string) bool {
+	switch strings.ToLower(mediaType) {
+	case "audio", "musicalbum", "musicartist":
+		return true
+	default:
+		return false
+	}
 }
 
 func formatTimeAgo(t time.Time, now time.Time) string {

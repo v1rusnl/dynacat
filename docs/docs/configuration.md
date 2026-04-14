@@ -3002,7 +3002,7 @@ Greenville, United States
 # External Integrations
 ### Currently Playing
 
-Display currently active media sessions from media servers (Plex, Jellyfin, Emby).
+Display currently active media sessions from media servers (Plex, Jellyfin, Emby, Navidrome).
 
 Example:
 
@@ -3014,6 +3014,9 @@ Example:
     - url: jellyfin:https://jellyfin.example.com
       token: ${JELLYFIN_API_KEY}
       allow-insecure: true
+    - url: navidrome:https://music.example.com
+      username: ${NAVIDROME_USER}
+      token: ${NAVIDROME_PASSWORD}
   show-thumbnail: true
   show-progress-bar: true
   group-by-host: false
@@ -3036,17 +3039,19 @@ Example:
 
 An array of media server hosts to check for active sessions.
 
-**Important**: Each host URL must be prefixed with the server type (`plex:`, `jellyfin:`, or `emby:`). For example:
+**Important**: Each host URL must be prefixed with the server type (`plex:`, `jellyfin:`, `emby:`, or `navidrome:`). For example:
 - `plex:https://192.168.1.10:32400`
 - `jellyfin:http://jellyfin.local:8096`
 - `emby:https://emby.example.com`
+- `navidrome:https://music.example.com`
 
 Properties for each host:
 
 | Name | Type | Required | Notes |
 | ---- | ---- | -------- | ----- |
 | url | string | yes | Must include server type prefix |
-| token | string | yes | API key or token for authentication |
+| username | string | for Navidrome | Subsonic username (Navidrome only) |
+| token | string | yes | API key/token, or password for Navidrome Subsonic auth |
 
 Example:
 ```yaml
@@ -3057,6 +3062,9 @@ hosts:
     token: ${JELLYFIN_API_KEY}
   - url: emby:https://emby.example.com
     token: ${EMBY_API_KEY}
+  - url: navidrome:https://music.example.com
+    username: ${NAVIDROME_USER}
+    token: ${NAVIDROME_PASSWORD}
 ```
 
 ##### `play-state`
@@ -3104,6 +3112,10 @@ When `true`, groups sessions by their media server. When `false`, displays all s
 
 **Emby:**
 - Requires an API key. Generate one in: ⚙️ (settings icon) → Advanced → API Keys
+
+**Navidrome:**
+- Uses the Subsonic/OpenSubsonic API (`getNowPlaying`).
+- Set `username` to your Navidrome username and `token` to your Navidrome password.
 
 ### Latest Media
 

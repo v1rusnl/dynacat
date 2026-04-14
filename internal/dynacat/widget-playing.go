@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -58,6 +59,28 @@ type jellyfinEmbySessionsResponse []struct {
 	} `json:"PlayState"`
 }
 
+type navidromeNowPlayingResponse struct {
+	SubsonicResponse struct {
+		Status     string `json:"status"`
+		NowPlaying struct {
+			Entry []struct {
+				ID         string `json:"id"`
+				Username   string `json:"username"`
+				Title      string `json:"title"`
+				Artist     string `json:"artist"`
+				Album      string `json:"album"`
+				Duration   int64  `json:"duration"`
+				MinutesAgo int    `json:"minutesAgo"`
+				CoverArt   string `json:"coverArt"`
+			} `json:"entry"`
+		} `json:"nowPlaying"`
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	} `json:"subsonic-response"`
+}
+
 type playingWidget struct {
 	widgetBase  `yaml:",inline"`
 	Hosts       []PlayingHostConfig `yaml:"hosts"`
@@ -82,6 +105,7 @@ type playingWidget struct {
 
 type PlayingHostConfig struct {
 	URL           string `yaml:"url"`
+	Username      string `yaml:"username"`
 	Token         string `yaml:"token"`
 	AllowInsecure bool   `yaml:"allow-insecure"`
 	ServerType    string `yaml:"-"`
@@ -187,6 +211,10 @@ func (widget *playingWidget) initialize() error {
 
 		host.ServerType = serverType
 		host.BaseURL = baseURL
+
+		if host.ServerType == "navidrome" && host.Username == "" {
+			return fmt.Errorf("host username is required for navidrome")
+		}
 
 		if widget.Debug {
 			slog.Info("Playing widget host configured", "type", serverType, "url", baseURL)
@@ -307,9 +335,86 @@ func (widget *playingWidget) fetchSessionsTask(ctx context.Context, host *Playin
 		return widget.fetchJellyfinSessions(ctx, host)
 	case "emby":
 		return widget.fetchEmbySessions(ctx, host)
+	case "navidrome":
+		return widget.fetchNavidromeSessions(ctx, host)
 	default:
 		return nil, fmt.Errorf("unknown server type: %s", host.ServerType)
 	}
+}
+
+func (widget *playingWidget) buildNavidromeAuthQuery(host *PlayingHostConfig) url.Values {
+	query := url.Values{}
+	query.Set("u", host.Username)
+	query.Set("p", host.Token)
+	query.Set("v", "1.16.1")
+	query.Set("c", "dynacat")
+	query.Set("f", "json")
+	return query
+}
+
+func (widget *playingWidget) fetchNavidromeSessions(ctx context.Context, host *PlayingHostConfig) ([]mediaSession, error) {
+	baseURL := strings.TrimRight(host.BaseURL, "/")
+	query := widget.buildNavidromeAuthQuery(host)
+
+	endpoint := fmt.Sprintf("%s/rest/getNowPlaying.view?%s", baseURL, query.Encode())
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	client := ternary(host.AllowInsecure, defaultInsecureHTTPClient, defaultHTTPClient)
+	response, err := decodeJsonFromRequest[navidromeNowPlayingResponse](client, req)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.SubsonicResponse.Status != "ok" {
+		if response.SubsonicResponse.Error != nil {
+			return nil, fmt.Errorf("navidrome api error %d: %s", response.SubsonicResponse.Error.Code, response.SubsonicResponse.Error.Message)
+		}
+		return nil, fmt.Errorf("navidrome returned status %q", response.SubsonicResponse.Status)
+	}
+
+	var sessions []mediaSession
+	for _, item := range response.SubsonicResponse.NowPlaying.Entry {
+		durationMs := item.Duration * 1000
+		offsetMs := int64(item.MinutesAgo) * int64(time.Minute/time.Millisecond)
+
+		session := mediaSession{
+			ServerType: "navidrome",
+			ServerURL:  host.BaseURL,
+			UserName:   item.Username,
+			IsPlaying:  true,
+			State:      "playing",
+			MediaType:  "track",
+			Title:      item.Title,
+			Artist:     item.Artist,
+			AlbumTitle: item.Album,
+			Duration:   durationMs,
+			Offset:     offsetMs,
+		}
+
+		widget.setDisplayTitles(&session)
+
+		if *widget.ShowThumbnail {
+			coverID := item.CoverArt
+			if coverID == "" {
+				coverID = item.ID
+			}
+
+			if coverID != "" {
+				coverQuery := widget.buildNavidromeAuthQuery(host)
+				coverQuery.Set("id", coverID)
+				session.ThumbnailURL = fmt.Sprintf("%s/rest/getCoverArt.view?%s", baseURL, coverQuery.Encode())
+			}
+		}
+
+		widget.calculateProgress(&session)
+		sessions = append(sessions, session)
+	}
+
+	return sessions, nil
 }
 
 func (widget *playingWidget) fetchPlexSessions(ctx context.Context, host *PlayingHostConfig) ([]mediaSession, error) {
@@ -648,7 +753,7 @@ func parseHostURL(rawURL string) (serverType string, baseURL string, err error) 
 	serverType = strings.ToLower(parts[0])
 
 	// Check if it's a valid server type
-	if serverType != "plex" && serverType != "jellyfin" && serverType != "emby" {
+	if serverType != "plex" && serverType != "jellyfin" && serverType != "emby" && serverType != "navidrome" {
 		// This might be part of a URL like "https://..."
 		slog.Warn(fmt.Sprintf("Host URL missing server type prefix (e.g., 'plex:https://...'). Unable to determine server type for: %s", rawURL))
 		return "", "", fmt.Errorf("unknown server type: %s", serverType)
