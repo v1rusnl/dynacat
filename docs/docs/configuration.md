@@ -2371,8 +2371,10 @@ Preview:
 | <kbd>S</kbd> | Focus the search bar | Not already focused on another input field |
 | <kbd>Enter</kbd> | Perform search in the same tab | Search input is focused and not empty |
 | <kbd>Ctrl</kbd> + <kbd>Enter</kbd> | Perform search in a new tab | Search input is focused and not empty |
-| <kbd>Escape</kbd> | Leave focus | Search input is focused |
-| <kbd>Up</kbd> | Insert the last search query since the page was opened into the input field | Search input is focused |
+| <kbd>Escape</kbd> | Leave focus / Close suggestions | Search input is focused |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Insert the last search query / Navigate suggestions | Search input is focused |
+| <kbd>↑</kbd> | Select previous suggestion | Autocomplete suggestions visible |
+| <kbd>↓</kbd> | Select next suggestion | Autocomplete suggestions visible |
 
 > [!TIP]
 >
@@ -2386,6 +2388,7 @@ Preview:
 | autofocus | boolean | no | false |
 | target | string | no | _blank |
 | placeholder | string | no | Type here to search… |
+| autocomplete | boolean | no | true |
 | bangs | array | no | |
 
 ##### `search-engine`
@@ -2411,6 +2414,9 @@ The target to use when opening the search results in a new tab. Possible values 
 
 ##### `placeholder`
 When set, modifies the text displayed in the input field before typing.
+
+##### `autocomplete`
+When set to `true` (default), displays search suggestions as you type. Navigate suggestions with <kbd>↑</kbd> and <kbd>↓</kbd> arrow keys, select with <kbd>Enter</kbd>, or dismiss with <kbd>Escape</kbd>. Set to `false` to disable autocompletion.
 
 ##### `bangs`
 What now? [Bangs](https://duckduckgo.com/bangs). They're shortcuts that allow you to use the same search box for many different sites. Assuming you have it configured, if for example you start your search input with `!yt` you'd be able to perform a search on YouTube:

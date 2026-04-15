@@ -81,3 +81,75 @@
 .search-bang:empty {
     display: none;
 }
+
+/* Widget border adjustments when dropdown is open */
+.search.search-suggestions-below {
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    border-bottom-width: 0;
+}
+
+.search.search-suggestions-above {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-top-width: 0;
+}
+
+/* Dropdown base — positioned + sized by JS */
+.search-autocomplete {
+    position: fixed;
+    z-index: 200;
+    box-sizing: border-box;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    background: var(--color-widget-background);
+    border: 1px solid var(--color-widget-content-border);
+    border-top-width: 0;
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+    border-bottom-left-radius: var(--border-radius);
+    border-bottom-right-radius: var(--border-radius);
+    opacity: 0;
+    transform: translateY(-4px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.2s;
+}
+
+/* Dropdown shown above input */
+.search-autocomplete.search-autocomplete-above {
+    border-bottom-width: 0;
+    border-top-width: 1px;
+    border-top-left-radius: var(--border-radius);
+    border-top-right-radius: var(--border-radius);
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    transform: translateY(4px);
+}
+
+.search:hover .search-autocomplete {
+    border-color: var(--color-text-subdue);
+}
+
+.search:focus-within .search-autocomplete {
+    border-color: var(--color-primary);
+}
+
+.search-autocomplete.active {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.search-autocomplete-item {
+    padding: 0.7rem 1.4rem;
+    cursor: pointer;
+    color: var(--color-text-base);
+    font-size: var(--font-size-base);
+    transition: background 0.1s;
+}
+
+.search-autocomplete-item:hover,
+.search-autocomplete-item.selected {
+    background: var(--color-widget-background-highlight);
+    color: var(--color-text-highlight);
+}

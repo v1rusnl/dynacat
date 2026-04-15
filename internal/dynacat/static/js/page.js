@@ -228,6 +228,166 @@ function setupSearchBoxes() {
                 inputElement.focus();
             });
         }
+
+        // DDG Autocomplete
+        if (widget.dataset.autocomplete === "true") {
+            const autocompleteEl = widget.querySelector(".search-autocomplete");
+            let acItems = [];
+            let acIndex = -1;
+            let acDebounce = null;
+            let acVisible = false;
+            let acAbove = false;
+            let acRepositioner = null;
+            let acRepositionFrame = null;
+
+            const repositionAC = () => {
+                const rect = widget.getBoundingClientRect();
+                const viewportH = window.innerHeight;
+                const spaceBelow = viewportH - rect.bottom;
+                const spaceAbove = rect.top;
+                const maxH = 280;
+
+                // Switch to above if not enough space below and more space above
+                const goAbove = spaceBelow < 120 && spaceAbove > spaceBelow;
+
+                autocompleteEl.style.left = rect.left + "px";
+                autocompleteEl.style.width = rect.width + "px";
+
+                if (goAbove) {
+                    autocompleteEl.style.top = "";
+                    autocompleteEl.style.bottom = (viewportH - rect.top) + "px";
+                    autocompleteEl.style.maxHeight = Math.min(maxH, spaceAbove - 4) + "px";
+                } else {
+                    autocompleteEl.style.top = rect.bottom + "px";
+                    autocompleteEl.style.bottom = "";
+                    autocompleteEl.style.maxHeight = Math.min(maxH, spaceBelow - 4) + "px";
+                }
+
+                if (goAbove !== acAbove) {
+                    acAbove = goAbove;
+                }
+
+                // Keep direction classes in sync on every reposition so the initial
+                // below state also receives its border adjustments.
+                autocompleteEl.classList.toggle("search-autocomplete-above", goAbove);
+                widget.classList.toggle("search-suggestions-above", goAbove);
+                widget.classList.toggle("search-suggestions-below", !goAbove);
+            };
+
+            const throttledRepositionAC = () => {
+                if (acRepositionFrame) return;
+                acRepositionFrame = requestAnimationFrame(() => {
+                    repositionAC();
+                    acRepositionFrame = null;
+                });
+            };
+
+            const showAC = () => {
+                repositionAC();
+                if (!acRepositioner) {
+                    acRepositioner = throttledRepositionAC;
+                    window.addEventListener("scroll", throttledRepositionAC, { passive: true });
+                    window.addEventListener("resize", throttledRepositionAC, { passive: true });
+                }
+                autocompleteEl.classList.add("active");
+                acVisible = true;
+            };
+
+            const hideAC = () => {
+                if (acRepositioner) {
+                    window.removeEventListener("scroll", acRepositioner);
+                    window.removeEventListener("resize", acRepositioner);
+                    acRepositioner = null;
+                }
+                if (acRepositionFrame) {
+                    cancelAnimationFrame(acRepositionFrame);
+                    acRepositionFrame = null;
+                }
+                autocompleteEl.classList.remove("active", "search-autocomplete-above");
+                widget.classList.remove("search-suggestions-above", "search-suggestions-below");
+                acVisible = false;
+                acAbove = false;
+                acIndex = -1;
+            };
+
+            const setACIndex = (i) => {
+                const items = autocompleteEl.querySelectorAll(".search-autocomplete-item");
+                items.forEach((el, j) => el.classList.toggle("selected", j === i));
+                acIndex = i;
+            };
+
+            const renderAC = (suggestions) => {
+                acItems = suggestions;
+                acIndex = -1;
+                autocompleteEl.innerHTML = "";
+                if (suggestions.length === 0) { hideAC(); return; }
+                suggestions.forEach((phrase, idx) => {
+                    const item = document.createElement("div");
+                    item.className = "search-autocomplete-item";
+                    item.textContent = phrase;
+                    item.addEventListener("mousedown", (e) => {
+                        e.preventDefault();
+                        inputElement.value = phrase;
+                        hideAC();
+                        submitSearch(newTab);
+                    });
+                    item.addEventListener("mousemove", () => {
+                        setACIndex(idx);
+                    });
+                    autocompleteEl.appendChild(item);
+                });
+                showAC();
+            };
+
+            const fetchSuggestions = (query) => {
+                if (!query || query.length < 2 || currentBang != null) {
+                    hideAC();
+                    return;
+                }
+                fetch("/api/search/autocomplete?q=" + encodeURIComponent(query))
+                    .then((r) => r.json())
+                    .then((data) => {
+                        if (inputElement.value.trim() !== query) return;
+                        renderAC(data.map((d) => d.phrase));
+                    })
+                    .catch(() => hideAC());
+            };
+
+            inputElement.addEventListener("input", () => {
+                const value = inputElement.value.trim();
+                clearTimeout(acDebounce);
+                if (!value || currentBang != null) { hideAC(); return; }
+                acDebounce = setTimeout(() => fetchSuggestions(value), 220);
+            });
+
+            inputElement.addEventListener("keydown", (event) => {
+                if (!acVisible) return;
+                if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setACIndex(Math.min(acIndex + 1, acItems.length - 1));
+                } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setACIndex(Math.max(acIndex - 1, -1));
+                } else if (event.key === "Enter" && acIndex >= 0) {
+                    event.preventDefault();
+                    inputElement.value = acItems[acIndex];
+                    hideAC();
+                    submitSearch(newTab);
+                } else if (event.key === "Escape") {
+                    hideAC();
+                }
+            });
+
+            // Delay hide to guard against spurious blur (e.g. Chrome scroll-on-focus
+            // near viewport bottom). Only close if focus genuinely left the input.
+            inputElement.addEventListener("blur", () => {
+                setTimeout(() => {
+                    if (document.activeElement !== inputElement) {
+                        hideAC();
+                    }
+                }, 200);
+            });
+        }
     }
 }
 

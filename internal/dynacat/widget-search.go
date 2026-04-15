@@ -15,14 +15,16 @@ type SearchBang struct {
 }
 
 type searchWidget struct {
-	widgetBase   `yaml:",inline"`
-	cachedHTML   template.HTML `yaml:"-"`
-	SearchEngine string        `yaml:"search-engine"`
-	Bangs        []SearchBang  `yaml:"bangs"`
-	NewTab       bool          `yaml:"new-tab"`
-	Target       string        `yaml:"target"`
-	Autofocus    bool          `yaml:"autofocus"`
-	Placeholder  string        `yaml:"placeholder"`
+	widgetBase          `yaml:",inline"`
+	cachedHTML          template.HTML `yaml:"-"`
+	SearchEngine        string        `yaml:"search-engine"`
+	Bangs               []SearchBang  `yaml:"bangs"`
+	NewTab              bool          `yaml:"new-tab"`
+	Target              string        `yaml:"target"`
+	Autofocus           bool          `yaml:"autofocus"`
+	Placeholder         string        `yaml:"placeholder"`
+	AutocompleteEnabled *bool         `yaml:"autocomplete"`
+	Autocomplete        bool          `yaml:"-"`
 }
 
 func convertSearchUrl(url string) string {
@@ -42,6 +44,7 @@ var searchEngines = map[string]string{
 
 func (widget *searchWidget) initialize() error {
 	widget.withTitle("Search").withError(nil)
+	widget.UpdateInterval = nil // search widget is static, never poll
 
 	if widget.SearchEngine == "" {
 		widget.SearchEngine = "duckduckgo"
@@ -49,6 +52,12 @@ func (widget *searchWidget) initialize() error {
 
 	if widget.Placeholder == "" {
 		widget.Placeholder = "Type here to search…"
+	}
+
+	if widget.AutocompleteEnabled == nil {
+		widget.Autocomplete = true
+	} else {
+		widget.Autocomplete = *widget.AutocompleteEnabled
 	}
 
 	if url, ok := searchEngines[widget.SearchEngine]; ok {

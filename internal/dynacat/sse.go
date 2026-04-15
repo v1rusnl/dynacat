@@ -80,6 +80,38 @@ func (a *application) handleImageProxyRequest(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func (a *application) handleSearchAutocompleteRequest(w http.ResponseWriter, r *http.Request) {
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+
+	ddgURL := "https://duckduckgo.com/ac/?q=" + query
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, ddgURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+	setBrowserUserAgentHeader(req)
+
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		http.Error(w, "Failed to fetch suggestions", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, resp.Body)
+}
+
 func (a *application) handleSSEUpdates(w http.ResponseWriter, r *http.Request) {
 	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
 		return
