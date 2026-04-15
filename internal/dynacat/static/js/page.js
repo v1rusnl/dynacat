@@ -501,22 +501,58 @@ function setupCollapsibleLists() {
 
         const collapseAfter = parseInt(list.dataset.collapseAfter);
 
+        const existingButton = list.nextElementSibling && list.nextElementSibling.classList.contains("expand-toggle-button")
+            ? list.nextElementSibling
+            : null;
+
         if (collapseAfter == -1) {
+            if (existingButton) {
+                existingButton.remove();
+            }
             continue;
         }
 
         if (list.children.length <= collapseAfter) {
+            if (existingButton) {
+                existingButton.remove();
+            }
+
+            list.classList.remove("container-expanded");
+            list.classList.remove("no-reveal-animation");
+
+            for (let c = 0; c < list.children.length; c++) {
+                const child = list.children[c];
+                child.classList.remove("collapsible-item");
+                child.style.removeProperty("animation-delay");
+            }
+
             continue;
         }
 
-        if (list.nextElementSibling && list.nextElementSibling.classList.contains("expand-toggle-button")) continue;
+        let button = existingButton;
 
-        attachExpandToggleButton(list);
+        if (!button || typeof button.setExpandedState !== "function") {
+            if (button) {
+                button.remove();
+            }
+
+            button = attachExpandToggleButton(list);
+        }
+
+        if (!button.isConnected) {
+            list.after(button);
+        }
 
         for (let c = collapseAfter; c < list.children.length; c++) {
             const child = list.children[c];
             child.classList.add("collapsible-item");
             child.style.animationDelay = ((c - collapseAfter) * 20).toString() + "ms";
+        }
+
+        for (let c = 0; c < collapseAfter; c++) {
+            const child = list.children[c];
+            child.classList.remove("collapsible-item");
+            child.style.removeProperty("animation-delay");
         }
     }
 }
@@ -537,17 +573,30 @@ function setupCollapsibleGrids() {
 
         const collapseAfterRows = parseInt(gridElement.dataset.collapseAfterRows);
 
+        const existingButton = gridElement.nextElementSibling && gridElement.nextElementSibling.classList.contains("expand-toggle-button")
+            ? gridElement.nextElementSibling
+            : null;
+
         if (collapseAfterRows == -1) {
+            if (existingButton) {
+                existingButton.remove();
+            }
             continue;
         }
 
-        if (gridElement.nextElementSibling && gridElement.nextElementSibling.classList.contains("expand-toggle-button")) continue;
+        let button = existingButton;
+
+        if (!button || typeof button.setExpandedState !== "function") {
+            if (button) {
+                button.remove();
+            }
+
+            button = attachExpandToggleButton(gridElement);
+        }
 
         const getCardsPerRow = () => {
             return parseInt(getComputedStyle(gridElement).getPropertyValue('--cards-per-row'));
         };
-
-        const button = attachExpandToggleButton(gridElement);
 
         let cardsPerRow;
 

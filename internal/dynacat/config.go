@@ -479,8 +479,13 @@ func isConfigStateValid(config *config) error {
 	}
 
 	hasAnyAuth := len(config.Auth.Users) > 0 || config.Auth.OIDC != nil
+	hasAnyAuthMethod := (len(config.Auth.Users) > 0 && !config.Auth.DisablePassword) || config.Auth.OIDC != nil
 	if hasAnyAuth && config.Auth.SecretKey == "" {
 		return fmt.Errorf("secret-key must be set when auth is configured")
+	}
+
+	if config.Auth.RequireAuth != nil && *config.Auth.RequireAuth && !hasAnyAuthMethod {
+		return fmt.Errorf("require-auth cannot be true without a configured auth method")
 	}
 
 	if config.Auth.OIDC != nil {
@@ -531,6 +536,10 @@ func isConfigStateValid(config *config) error {
 
 	for i := range config.Pages {
 		page := &config.Pages[i]
+
+		if (len(page.AllowedUsers) > 0 || len(page.AllowedGroups) > 0) && !hasAnyAuthMethod {
+			return fmt.Errorf("page %d has allowed-users/allowed-groups but no auth method is configured", i+1)
+		}
 
 		if page.Title == "" {
 			return fmt.Errorf("page %d has no name", i+1)
