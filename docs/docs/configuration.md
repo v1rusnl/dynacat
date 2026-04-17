@@ -763,6 +763,7 @@ Preview:
 | Name | Type | Required | Default |
 | ---- | ---- | -------- | ------- |
 | instance-url | string | no | `https://www.changedetection.io` |
+| allow-insecure | boolean | no | false |
 | token | string | no |  |
 | limit | integer | no | 10 |
 | collapse-after | integer | no | 5 |
@@ -770,6 +771,9 @@ Preview:
 
 ##### `instance-url`
 The URL pointing to your instance of `changedetection.io`.
+
+##### `allow-insecure`
+Whether to allow invalid/self-signed certificates when making requests to the service.
 
 ##### `token`
 The API access token which can be found in `SETTINGS > API`. Optionally, you can specify this using an environment variable with the syntax `${VARIABLE_NAME}`.
@@ -2462,14 +2466,6 @@ bangs:
     shortcut: "!yt"
     url: https://www.youtube.com/results?search_query={QUERY}
     icon: di:youtube
-  - title: Google
-    shortcut: "!g"
-    url: https://www.google.com/search?q={QUERY}
-    icon: si:google
-  - title: My Site
-    shortcut: "!ms"
-    url: https://example.com/search?q={QUERY}
-    icon: /assets/icons/mysite.png
 ```
 
 See the [Icons](#icons) section for full syntax reference including `si:`, `di:`, `sh:`, `mdi:` prefixes, URLs, and `auto-invert`.
