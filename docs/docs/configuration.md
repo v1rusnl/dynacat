@@ -2429,6 +2429,7 @@ What now? [Bangs](https://duckduckgo.com/bangs). They're shortcuts that allow yo
 | title | string | no |
 | shortcut | string | yes |
 | url | string | yes |
+| icon | string | no |
 
 ###### `title`
 Optional title that will appear on the right side of the search bar when the query starts with the associated shortcut.
@@ -2451,6 +2452,27 @@ url: https://www.reddit.com/search?q={QUERY}
 url: https://store.steampowered.com/search/?term={QUERY}
 url: https://www.amazon.com/s?k={QUERY}
 ```
+
+###### `icon`
+An optional icon to display in place of the default search icon when the bang is active. Supports the same icon syntax as other widgets:
+
+```yaml
+bangs:
+  - title: YouTube
+    shortcut: "!yt"
+    url: https://www.youtube.com/results?search_query={QUERY}
+    icon: di:youtube
+  - title: Google
+    shortcut: "!g"
+    url: https://www.google.com/search?q={QUERY}
+    icon: si:google
+  - title: My Site
+    shortcut: "!ms"
+    url: https://example.com/search?q={QUERY}
+    icon: /assets/icons/mysite.png
+```
+
+See the [Icons](#icons) section for full syntax reference including `si:`, `di:`, `sh:`, `mdi:` prefixes, URLs, and `auto-invert`.
 
 ### Server Stats
 Display statistics such as CPU usage, memory usage and disk usage of the server Dynacat is running on or other servers.

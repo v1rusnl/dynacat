@@ -2,6 +2,21 @@
     width: 2.3rem;
 }
 
+.search-bang-icon {
+    display: none;
+    width: 2.3rem;
+    height: 2.3rem;
+    object-fit: contain;
+}
+
+.search-bang-icon.flat-icon {
+    filter: invert(var(--color-invert));
+}
+
+.search-bang-icon.active {
+    display: block;
+}
+
 .search-icon-container {
     position: relative;
     flex-shrink: 0;

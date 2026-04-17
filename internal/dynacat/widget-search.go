@@ -12,6 +12,7 @@ type SearchBang struct {
 	Title    string
 	Shortcut string
 	URL      string
+	Icon     customIconField `yaml:"icon"`
 }
 
 type searchWidget struct {
@@ -78,10 +79,20 @@ func (widget *searchWidget) initialize() error {
 		widget.Bangs[i].URL = convertSearchUrl(widget.Bangs[i].URL)
 	}
 
-	widget.cachedHTML = widget.renderTemplate(widget, searchWidgetTemplate)
 	return nil
 }
 
+func (widget *searchWidget) setProviders(providers *widgetProviders) {
+	widget.widgetBase.setProviders(providers)
+	for i := range widget.Bangs {
+		widget.Bangs[i].Icon.prepare(providers)
+	}
+	widget.cachedHTML = widget.renderTemplate(widget, searchWidgetTemplate)
+}
+
 func (widget *searchWidget) Render() template.HTML {
+	if widget.cachedHTML == "" {
+		widget.cachedHTML = widget.renderTemplate(widget, searchWidgetTemplate)
+	}
 	return widget.cachedHTML
 }

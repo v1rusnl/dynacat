@@ -117,6 +117,8 @@ function setupSearchBoxes() {
         const formElement = widget.getElementsByClassName("search-form")[0];
         const inputElement = widget.getElementsByClassName("search-input")[0];
         const bangElement = widget.getElementsByClassName("search-bang")[0];
+        const bangIconElement = widget.querySelector(".search-bang-icon");
+        const searchIconElement = widget.querySelector(".search-icon");
         const bangs = widget.querySelectorAll(".search-bangs > input");
         const bangsMap = {};
         const kbdElement = widget.getElementsByTagName("kbd")[0];
@@ -182,6 +184,18 @@ function setupSearchBoxes() {
         const changeCurrentBang = (bang) => {
             currentBang = bang;
             bangElement.textContent = bang != null ? bang.dataset.title : "";
+            if (bangIconElement) {
+                if (bang != null && bang.dataset.icon) {
+                    bangIconElement.src = bang.dataset.icon;
+                    bangIconElement.classList.toggle("flat-icon", bang.dataset.iconAutoInvert === "true");
+                    bangIconElement.classList.add("active");
+                    if (searchIconElement) searchIconElement.style.display = "none";
+                } else {
+                    bangIconElement.classList.remove("active");
+                    bangIconElement.src = "";
+                    if (searchIconElement) searchIconElement.style.display = "";
+                }
+            }
         }
 
         const handleInput = (event) => {
