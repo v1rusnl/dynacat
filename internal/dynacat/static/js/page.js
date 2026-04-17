@@ -984,6 +984,16 @@ async function setupTodos() {
     }
 }
 
+async function setupStopwatches() {
+    const elems = document.getElementsByClassName("stopwatch");
+    if (elems.length == 0) return;
+
+    const stopwatch = await import('./stopwatch.js');
+
+    for (let i = 0; i < elems.length; i++)
+        stopwatch.default(elems[i]);
+}
+
 function setupTruncatedElementTitles() {
     const elements = document.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
 
@@ -1111,6 +1121,7 @@ async function setupPage() {
         setupClocks()
         await setupCalendars();
         await setupTodos();
+        await setupStopwatches();
         setupCarousels();
         setupSearchBoxes();
         setupCollapsibleLists();

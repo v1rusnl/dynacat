@@ -2732,6 +2732,20 @@ pages:
 Just like the `group` widget, you can insert any widget type, you can even insert a `group` widget inside of a `split-column` widget, but you can't insert a `split-column` widget inside of a `group` widget.
 
 
+### Stopwatch
+
+A browser-based stopwatch widget. 
+
+Example:
+
+```yaml
+- type: stopwatch
+```
+
+Preview:
+
+![](images/stopwatch-widget-preview.png)
+
 ### Todo
 
 A simple to-do list that allows you to add, edit and delete tasks. By default, tasks are stored in the browser's local storage. Optionally, tasks can be stored in a server-side SQLite database for persistence across browsers and devices.

@@ -65,6 +65,8 @@ func newWidget(widgetType string) (widget, error) {
 		w = &repositoryWidget{}
 	case "search":
 		w = &searchWidget{}
+	case "stopwatch":
+		w = &stopwatchWidget{}
 	case "extension":
 		w = &extensionWidget{}
 	case "group":
