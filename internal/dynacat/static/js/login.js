@@ -79,6 +79,21 @@ if (usernameInput && passwordInput && loginButton) {
     usernameInput.on("input", enableLoginButtonIfCriteriaMet);
     passwordInput.on("input", enableLoginButtonIfCriteriaMet);
 
+    // Allow pressing Enter in either input to submit the login when enabled
+    usernameInput.on("keydown", function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (!loginButton.disabled) handleLoginAttempt();
+        }
+    });
+
+    passwordInput.on("keydown", function(e) {
+        if (e.key === "Enter") {
+            e.preventDefault();
+            if (!loginButton.disabled) handleLoginAttempt();
+        }
+    });
+
     async function handleLoginAttempt() {
         state.lastUsername = usernameInput.value;
         state.lastPassword = passwordInput.value;
