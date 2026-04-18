@@ -2,11 +2,14 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 1.5rem;
+    justify-content: center;
+    gap: 1.2rem;
+    width: 100%;
+    min-height: 100%;
 }
 
 .stopwatch-display {
-    font-size: 3.6rem;
+    font-size: 2.4rem;
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
     line-height: 1;
@@ -14,7 +17,7 @@
 
 .stopwatch-controls {
     display: flex;
-    gap: 1rem;
+    gap: 0.8rem;
 }
 
 .stopwatch-btn-hidden {
@@ -27,8 +30,8 @@
     border-radius: var(--border-radius);
     color: var(--color-text-base);
     cursor: pointer;
-    width: 5rem;
-    height: 4rem;
+    width: 4.5rem;
+    height: 3.5rem;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -41,8 +44,8 @@
 }
 
 .stopwatch-btn svg {
-    width: 1.6rem;
-    height: 1.6rem;
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 .stopwatch-laps {
