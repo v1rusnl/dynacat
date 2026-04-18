@@ -331,31 +331,34 @@ func (a *application) isUserAllowedOnPage(user *authenticatedUser, p *page) bool
 	return false
 }
 
+func (a *application) canUserAccessPage(user *authenticatedUser, p *page) bool {
+	pageHasRestrictions := len(p.AllowedUsers) > 0 || len(p.AllowedGroups) > 0
+
+	if !pageHasRestrictions {
+		if !a.RequiresAuth {
+			return true
+		}
+
+		return user != nil
+	}
+
+	if user == nil {
+		return false
+	}
+
+	return a.isUserAllowedOnPage(user, p)
+}
+
 func (a *application) handleAccessControl(w http.ResponseWriter, r *http.Request, p *page, fallback doWhenUnauthorized) bool {
 	user := a.getAuthenticatedUser(w, r)
 
 	pageHasRestrictions := len(p.AllowedUsers) > 0 || len(p.AllowedGroups) > 0
+	allowed := a.canUserAccessPage(user, p)
 
-	if !pageHasRestrictions {
-		// Page open to all authenticated users (or everyone if RequireAuth is false)
-		if !a.RequiresAuth {
-			return false // public access OK
-		}
-		if user != nil {
-			return false // authenticated, open page
-		}
-		// Need to authenticate
-		switch fallback {
-		case redirectToLogin:
-			http.Redirect(w, r, a.Config.Server.BaseURL+"/login", http.StatusSeeOther)
-		case showUnauthorizedJSON:
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": "Unauthorized"}`))
-		}
-		return true
+	if allowed {
+		return false
 	}
 
-	// Page has restrictions - must be authenticated + authorized
 	if user == nil {
 		switch fallback {
 		case redirectToLogin:
@@ -367,13 +370,21 @@ func (a *application) handleAccessControl(w http.ResponseWriter, r *http.Request
 		return true
 	}
 
-	if !a.isUserAllowedOnPage(user, p) {
+	if pageHasRestrictions {
 		w.WriteHeader(http.StatusForbidden)
 		w.Write([]byte("Forbidden"))
 		return true
 	}
 
-	return false
+	switch fallback {
+	case redirectToLogin:
+		http.Redirect(w, r, a.Config.Server.BaseURL+"/login", http.StatusSeeOther)
+	case showUnauthorizedJSON:
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error": "Unauthorized"}`))
+	}
+	return true
+
 }
 
 // Handles sending the appropriate response for an unauthorized request and returns true if the request was unauthorized

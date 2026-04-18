@@ -657,6 +657,10 @@ func (a *application) handleWidgetContentRequest(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if a.handleAccessControl(w, r, page, showUnauthorizedJSON) {
+		return
+	}
+
 	page.mu.Lock()
 	defer page.mu.Unlock()
 
@@ -681,6 +685,16 @@ func (a *application) handleWidgetActionRequest(w http.ResponseWriter, r *http.R
 	widget, exists := a.widgetByID[widgetID]
 	if !exists {
 		a.handleNotFound(w, r)
+		return
+	}
+
+	page, exists := a.widgetToPage[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
+
+	if a.handleAccessControl(w, r, page, showUnauthorizedJSON) {
 		return
 	}
 
@@ -788,13 +802,22 @@ func (a *application) server() (func() error, func() error) {
 	)
 
 	if a.Config.Server.CacheDir != "" {
-		mux.Handle(
-			"GET /.cache/{path...}",
-			http.StripPrefix(
-				"/.cache",
-				fileServerWithCache(http.Dir(a.Config.Server.CacheDir), REMOTE_IMAGE_CACHE_DURATION),
-			),
+		cacheHandler := http.StripPrefix(
+			"/.cache",
+			fileServerWithCache(http.Dir(a.Config.Server.CacheDir), REMOTE_IMAGE_CACHE_DURATION),
 		)
+
+		if a.RequiresAuth {
+			mux.Handle("GET /.cache/{path...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+					return
+				}
+
+				cacheHandler.ServeHTTP(w, r)
+			}))
+		} else {
+			mux.Handle("GET /.cache/{path...}", cacheHandler)
+		}
 	}
 
 	assetCacheControlValue := fmt.Sprintf(
@@ -821,7 +844,18 @@ func (a *application) server() (func() error, func() error) {
 
 	absAssetsPath, _ := filepath.Abs(assetsPath)
 	assetsFS := fileServerWithCache(http.Dir(assetsPath), 2*time.Hour)
-	mux.Handle("/assets/{path...}", http.StripPrefix("/assets/", assetsFS))
+	assetsHandler := http.StripPrefix("/assets/", assetsFS)
+	if a.RequiresAuth {
+		mux.Handle("/assets/{path...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+				return
+			}
+
+			assetsHandler.ServeHTTP(w, r)
+		}))
+	} else {
+		mux.Handle("/assets/{path...}", assetsHandler)
+	}
 
 	server := http.Server{
 		Addr:    fmt.Sprintf("%s:%d", a.Config.Server.Host, a.Config.Server.Port),

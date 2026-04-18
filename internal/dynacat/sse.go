@@ -13,6 +13,7 @@ import (
 type sseClient struct {
 	ch   chan string
 	done <-chan struct{}
+	user *authenticatedUser
 }
 
 func (a *application) registerImageProxy(hash string, url string, allowInsecure bool) {
@@ -117,6 +118,8 @@ func (a *application) handleSSEUpdates(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	user := a.getAuthenticatedUser(w, r)
+
 	if !a.DynamicUpdateEnabled {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -139,6 +142,7 @@ func (a *application) handleSSEUpdates(w http.ResponseWriter, r *http.Request) {
 	client := &sseClient{
 		ch:   make(chan string, 16),
 		done: r.Context().Done(),
+		user: user,
 	}
 	a.sseRegisterClient(client)
 	defer a.sseUnregisterClient(client)
@@ -168,6 +172,22 @@ func (a *application) sseUpdateLoop(ctx context.Context) {
 			return
 		case <-ticker.C:
 			a.sseCheckAndPushUpdates(ctx)
+		}
+	}
+}
+
+func (a *application) sseBroadcastWidgetUpdate(pg *page, msg string) {
+	a.sseMu.RLock()
+	defer a.sseMu.RUnlock()
+
+	for c := range a.sseClients {
+		if !a.canUserAccessPage(c.user, pg) {
+			continue
+		}
+
+		select {
+		case c.ch <- msg:
+		default:
 		}
 	}
 }
@@ -221,7 +241,7 @@ func (a *application) sseCheckAndPushUpdates(ctx context.Context) {
 				return
 			}
 
-			a.sseBroadcast(string(msg))
+			a.sseBroadcastWidgetUpdate(pg, string(msg))
 		}(w, pg)
 	}
 	wg.Wait()
