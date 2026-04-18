@@ -1,6 +1,7 @@
 package dynacat
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -40,4 +41,28 @@ func (s *sessionStore) get(id string) (*oidcSession, bool) {
 
 func (s *sessionStore) delete(id string) {
 	s.sessions.Delete(id)
+}
+
+func (s *sessionStore) sweepExpired(maxAge time.Duration) {
+	now := time.Now()
+	s.sessions.Range(func(k, v any) bool {
+		sess, ok := v.(*oidcSession)
+		if !ok || now.Sub(sess.CreatedAt) > maxAge {
+			s.sessions.Delete(k)
+		}
+		return true
+	})
+}
+
+func (s *sessionStore) runSweeper(ctx context.Context, interval, maxAge time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.sweepExpired(maxAge)
+		}
+	}
 }

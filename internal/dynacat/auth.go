@@ -14,7 +14,6 @@ import (
 	mathrand "math/rand/v2"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -184,6 +183,7 @@ func (a *application) handleAuthenticationAttempt(w http.ResponseWriter, r *http
 		a.authAttemptsMu.Unlock()
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -436,9 +436,9 @@ func (a *application) setAuthSessionCookie(w http.ResponseWriter, r *http.Reques
 		Name:     AUTH_SESSION_COOKIE_NAME,
 		Value:    token,
 		Expires:  expires,
-		Secure:   strings.ToLower(r.Header.Get("X-Forwarded-Proto")) == "https",
+		Secure:   a.isRequestHTTPS(r),
 		Path:     a.Config.Server.BaseURL + "/",
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		HttpOnly: true,
 	})
 }
@@ -460,8 +460,9 @@ func (a *application) handleLoginPageRequest(w http.ResponseWriter, r *http.Requ
 	var responseBytes bytes.Buffer
 	err := loginPageTemplate.Execute(&responseBytes, data)
 	if err != nil {
+		log.Printf("rendering login page: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte("internal server error"))
 		return
 	}
 

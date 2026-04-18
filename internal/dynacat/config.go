@@ -8,6 +8,7 @@ import (
 	"iter"
 	"log"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,13 +30,16 @@ const (
 
 type config struct {
 	Server struct {
-		Host       string `yaml:"host"`
-		Port       uint16 `yaml:"port"`
-		Proxied    bool   `yaml:"proxied"`
-		AssetsPath string `yaml:"assets-path"`
-		CacheDir   string `yaml:"cache-dir"`
-		BaseURL    string `yaml:"base-url"`
-		DBPath     string `yaml:"db-path"`
+		Host           string   `yaml:"host"`
+		Port           uint16   `yaml:"port"`
+		Proxied        bool     `yaml:"proxied"`
+		TrustedProxies []string `yaml:"trusted-proxies"`
+		HTTPS          bool     `yaml:"https"`
+		AssetsPath     string   `yaml:"assets-path"`
+		CacheDir       string   `yaml:"cache-dir"`
+		BaseURL        string   `yaml:"base-url"`
+		DBPath         string   `yaml:"db-path"`
+		trustedProxyNets []*net.IPNet `yaml:"-"`
 	} `yaml:"server"`
 
 	Auth struct {
@@ -247,7 +251,12 @@ func parseConfigVariableOfType(variableType, variableName string) (string, bool,
 			return "", false, fmt.Errorf("readFileFromEnv: file path %s is not absolute", filePath)
 		}
 
-		fileContents, err := os.ReadFile(filePath)
+		cleaned := filepath.Clean(filePath)
+		if !isReadFileFromEnvPathAllowed(cleaned) {
+			return "", false, fmt.Errorf("readFileFromEnv: file path %s is not within an allowed prefix", filePath)
+		}
+
+		fileContents, err := os.ReadFile(cleaned)
 		if err != nil {
 			return "", false, fmt.Errorf("readFileFromEnv: reading file from %s: %v", variableName, err)
 		}
@@ -256,6 +265,35 @@ func parseConfigVariableOfType(variableType, variableName string) (string, bool,
 	default:
 		return "", true, nil
 	}
+}
+
+var defaultReadFileFromEnvPrefixes = []string{
+	"/run/secrets/",
+	"/etc/dynacat/secrets/",
+	"/var/run/secrets/",
+}
+
+func isReadFileFromEnvPathAllowed(cleaned string) bool {
+	prefixes := defaultReadFileFromEnvPrefixes
+	if extra := os.Getenv("DYNACAT_READ_FILE_FROM_ENV_ROOTS"); extra != "" {
+		for _, p := range strings.Split(extra, ":") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if !strings.HasSuffix(p, "/") {
+				p += "/"
+			}
+			prefixes = append(prefixes, p)
+		}
+	}
+
+	for _, p := range prefixes {
+		if strings.HasPrefix(cleaned, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func formatWidgetInitError(err error, w widget) error {
@@ -523,8 +561,8 @@ func isConfigStateValid(config *config) error {
 			if user.PasswordHashString == "" {
 				return fmt.Errorf("user %s must have a password or a password-hash set", username)
 			}
-		} else if len(user.Password) < 6 {
-			return fmt.Errorf("the password for %s must be at least 6 characters", username)
+		} else if len(user.Password) < 12 {
+			return fmt.Errorf("the password for %s must be at least 12 characters", username)
 		}
 	}
 

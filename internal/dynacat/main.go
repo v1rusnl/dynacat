@@ -76,8 +76,8 @@ func Main() int {
 			return 1
 		}
 
-		if len(password) < 6 {
-			fmt.Println("Password must be at least 6 characters long")
+		if len(password) < 12 {
+			fmt.Println("Password must be at least 12 characters long")
 			return 1
 		}
 

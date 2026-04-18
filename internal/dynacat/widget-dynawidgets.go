@@ -9,8 +9,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -19,6 +21,10 @@ import (
 
 const dynawidgetsDefaultRepo = "main"
 const dynawidgetsAssetsDir = "/app/assets/dynawidgets"
+
+var dynawidgetsSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,63}$`)
+var dynawidgetsRepoPattern = regexp.MustCompile(`^[a-zA-Z0-9._/-]{1,64}$`)
+var dynawidgetsTemplateHost = "raw.githubusercontent.com"
 
 type dynawidgetsWidget struct {
 	widgetBase        `yaml:",inline"`
@@ -52,9 +58,15 @@ func (widget *dynawidgetsWidget) initialize() error {
 	}
 
 	slug := strings.ToLower(widget.Widget)
+	if !dynawidgetsSlugPattern.MatchString(slug) {
+		return fmt.Errorf("widget slug %q is invalid; must match %s", slug, dynawidgetsSlugPattern)
+	}
 	repo := widget.Repo
 	if repo == "" {
 		repo = dynawidgetsDefaultRepo
+	}
+	if !dynawidgetsRepoPattern.MatchString(repo) {
+		return fmt.Errorf("repo %q is invalid", repo)
 	}
 	templateContent, title, required, err := dynawidgetsResolveTemplate(slug, repo)
 	if err != nil {
@@ -153,7 +165,15 @@ func dynawidgetsParseTemplate(raw string) (templateContent string, required *dyn
 // it from the dynawidgets repository. Returns the template content, the
 // widget title (empty if loaded from cache), and parsed required config.
 func dynawidgetsResolveTemplate(slug string, repo string) (templateContent string, title string, required *dynawidgetsRequired, err error) {
+	if !dynawidgetsSlugPattern.MatchString(slug) {
+		return "", "", nil, fmt.Errorf("invalid slug %q", slug)
+	}
 	templatePath := filepath.Join(dynawidgetsAssetsDir, slug+".txt")
+	if absAssets, aerr := filepath.Abs(dynawidgetsAssetsDir); aerr == nil {
+		if absTemplate, terr := filepath.Abs(templatePath); terr != nil || !strings.HasPrefix(absTemplate, absAssets+string(filepath.Separator)) {
+			return "", "", nil, fmt.Errorf("refusing to resolve template outside assets dir")
+		}
+	}
 
 	// Check if template already exists on disk
 	if data, readErr := os.ReadFile(templatePath); readErr == nil {
@@ -198,6 +218,17 @@ func dynawidgetsResolveTemplate(slug string, repo string) (templateContent strin
 	}
 
 	// Fetch the template content
+	parsedTemplateURL, err := url.Parse(entry.Template)
+	if err != nil {
+		return "", "", nil, fmt.Errorf("invalid template URL %q: %w", entry.Template, err)
+	}
+	if parsedTemplateURL.Scheme != "https" || parsedTemplateURL.Host != dynawidgetsTemplateHost {
+		return "", "", nil, fmt.Errorf(
+			"refusing to fetch template from unexpected host %q (must be https://%s)",
+			parsedTemplateURL.Host, dynawidgetsTemplateHost,
+		)
+	}
+
 	slog.Info("Fetching dynawidget template", "slug", slug, "url", entry.Template)
 
 	templateResp, err := defaultHTTPClient.Get(entry.Template)
@@ -220,7 +251,7 @@ func dynawidgetsResolveTemplate(slug string, repo string) (templateContent strin
 	// Save to disk for future use
 	if err := os.MkdirAll(dynawidgetsAssetsDir, 0755); err != nil {
 		slog.Error("Failed to create dynawidgets assets directory", "error", err)
-	} else if err := os.WriteFile(templatePath, bodyBytes, 0644); err != nil {
+	} else if err := os.WriteFile(templatePath, bodyBytes, 0600); err != nil {
 		slog.Error("Failed to cache dynawidget template", "error", err, "path", templatePath)
 	} else {
 		slog.Info("Cached dynawidget template", "slug", slug, "path", templatePath)

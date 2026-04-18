@@ -14,6 +14,7 @@ import (
 )
 
 const OIDC_STATE_COOKIE_NAME = "oidc_state"
+const OIDC_PKCE_COOKIE_NAME = "oidc_pkce"
 const OIDC_STATE_VALID_PERIOD = 5 * time.Minute
 
 func initOIDCProvider(cfg *oidcConfig) (*gooidc.Provider, *gooidc.IDTokenVerifier, *oauth2.Config, error) {
@@ -51,17 +52,36 @@ func (a *application) handleOIDCLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	pkceVerifier, err := makeAuthSecretKey(32)
+	if err != nil {
+		log.Printf("OIDC: could not generate PKCE verifier: %v", err)
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	secure := a.isRequestHTTPS(r)
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     OIDC_STATE_COOKIE_NAME,
 		Value:    state,
 		Expires:  time.Now().Add(OIDC_STATE_VALID_PERIOD),
-		Secure:   strings.ToLower(r.Header.Get("X-Forwarded-Proto")) == "https",
+		Secure:   secure,
 		Path:     a.Config.Server.BaseURL + "/",
 		SameSite: http.SameSiteLaxMode,
 		HttpOnly: true,
 	})
 
-	url := a.oauth2Config.AuthCodeURL(state, oauth2.S256ChallengeOption(state))
+	http.SetCookie(w, &http.Cookie{
+		Name:     OIDC_PKCE_COOKIE_NAME,
+		Value:    pkceVerifier,
+		Expires:  time.Now().Add(OIDC_STATE_VALID_PERIOD),
+		Secure:   secure,
+		Path:     a.Config.Server.BaseURL + "/",
+		SameSite: http.SameSiteLaxMode,
+		HttpOnly: true,
+	})
+
+	url := a.oauth2Config.AuthCodeURL(state, oauth2.S256ChallengeOption(pkceVerifier))
 	http.Redirect(w, r, url, http.StatusFound)
 }
 
@@ -80,9 +100,22 @@ func (a *application) handleOIDCCallback(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// Clear state cookie
+	pkceCookie, err := r.Cookie(OIDC_PKCE_COOKIE_NAME)
+	if err != nil || pkceCookie.Value == "" {
+		http.Redirect(w, r, baseURL+"/login?error=invalid_state", http.StatusSeeOther)
+		return
+	}
+
+	// Clear state + PKCE cookies
 	http.SetCookie(w, &http.Cookie{
 		Name:     OIDC_STATE_COOKIE_NAME,
+		Value:    "",
+		Expires:  time.Now().Add(-1 * time.Hour),
+		Path:     baseURL + "/",
+		HttpOnly: true,
+	})
+	http.SetCookie(w, &http.Cookie{
+		Name:     OIDC_PKCE_COOKIE_NAME,
 		Value:    "",
 		Expires:  time.Now().Add(-1 * time.Hour),
 		Path:     baseURL + "/",
@@ -101,7 +134,7 @@ func (a *application) handleOIDCCallback(w http.ResponseWriter, r *http.Request)
 	}
 
 	ctx := r.Context()
-	oauth2Token, err := a.oauth2Config.Exchange(ctx, code, oauth2.VerifierOption(stateCookie.Value))
+	oauth2Token, err := a.oauth2Config.Exchange(ctx, code, oauth2.VerifierOption(pkceCookie.Value))
 	if err != nil {
 		log.Printf("OIDC: token exchange failed: %v", err)
 		http.Redirect(w, r, baseURL+"/login?error=token_exchange", http.StatusSeeOther)
@@ -198,9 +231,9 @@ func (a *application) handleOIDCCallback(w http.ResponseWriter, r *http.Request)
 		Name:     OIDC_SESSION_COOKIE_NAME,
 		Value:    sessionID,
 		Expires:  time.Now().Add(OIDC_SESSION_VALID_PERIOD),
-		Secure:   strings.ToLower(r.Header.Get("X-Forwarded-Proto")) == "https",
+		Secure:   a.isRequestHTTPS(r),
 		Path:     baseURL + "/",
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		HttpOnly: true,
 	})
 

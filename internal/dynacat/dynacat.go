@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -62,7 +63,8 @@ type application struct {
 	oauth2Config *oauth2.Config
 	oidcSessions *sessionStore
 
-	todoStorage *todoStorage
+	todoStorage      *todoStorage
+	todoListIDToPage map[string]*page
 
 	sseMu                sync.RWMutex
 	sseClients           map[*sseClient]struct{}
@@ -82,8 +84,9 @@ func newApplication(c *config) (*application, error) {
 		slugToPage:     make(map[string]*page),
 		widgetByID:     make(map[uint64]widget),
 		widgetToPage:   make(map[uint64]*page),
-		sseClients:     make(map[*sseClient]struct{}),
-		imageProxyURLs: make(map[string]imageProxyInfo),
+		sseClients:       make(map[*sseClient]struct{}),
+		imageProxyURLs:   make(map[string]imageProxyInfo),
+		todoListIDToPage: make(map[string]*page),
 	}
 	config := &app.Config
 
@@ -211,6 +214,27 @@ func newApplication(c *config) (*application, error) {
 	}
 	config.Server.CacheDir = cacheDir
 
+	for _, cidr := range config.Server.TrustedProxies {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		if !strings.Contains(cidr, "/") {
+			if ip := net.ParseIP(cidr); ip != nil {
+				if ip.To4() != nil {
+					cidr = cidr + "/32"
+				} else {
+					cidr = cidr + "/128"
+				}
+			}
+		}
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted-proxies entry %q: %v", cidr, err)
+		}
+		config.Server.trustedProxyNets = append(config.Server.trustedProxyNets, ipnet)
+	}
+
 	//
 	// Init pages
 	//
@@ -256,6 +280,22 @@ func newApplication(c *config) (*application, error) {
 			page.DesktopNavigationWidth = page.Width
 		}
 
+		var collectTodoListIDs func(ws widgets)
+		collectTodoListIDs = func(ws widgets) {
+			for _, w := range ws {
+				switch v := w.(type) {
+				case *todoWidget:
+					if v.Storage == "server" && v.TodoID != "" {
+						app.todoListIDToPage[v.TodoID] = page
+					}
+				case *groupWidget:
+					collectTodoListIDs(v.Widgets)
+				case *splitColumnWidget:
+					collectTodoListIDs(v.Widgets)
+				}
+			}
+		}
+
 		registerWidget := func(widget widget) {
 			app.widgetByID[widget.GetID()] = widget
 			app.widgetToPage[widget.GetID()] = page
@@ -265,6 +305,7 @@ func newApplication(c *config) (*application, error) {
 		for i := range page.HeadWidgets {
 			registerWidget(page.HeadWidgets[i])
 		}
+		collectTodoListIDs(page.HeadWidgets)
 
 		for c := range page.Columns {
 			column := &page.Columns[c]
@@ -276,6 +317,7 @@ func newApplication(c *config) (*application, error) {
 			for w := range column.Widgets {
 				registerWidget(column.Widgets[w])
 			}
+			collectTodoListIDs(column.Widgets)
 		}
 	}
 
@@ -547,8 +589,9 @@ func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) 
 	var responseBytes bytes.Buffer
 	err := pageTemplate.Execute(&responseBytes, data)
 	if err != nil {
+		log.Printf("rendering page template: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte("internal server error"))
 		return
 	}
 
@@ -590,8 +633,9 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 	w.Header().Set("X-Dynacat-Cache-Building", strconv.FormatBool(isCacheBuilding))
 
 	if err != nil {
+		log.Printf("rendering page content template: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte("internal server error"))
 		return
 	}
 
@@ -600,12 +644,9 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 
 func (a *application) addressOfRequest(r *http.Request) string {
 	remoteAddrWithoutPort := func() string {
-		for i := len(r.RemoteAddr) - 1; i >= 0; i-- {
-			if r.RemoteAddr[i] == ':' {
-				return r.RemoteAddr[:i]
-			}
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			return host
 		}
-
 		return r.RemoteAddr
 	}
 
@@ -613,18 +654,50 @@ func (a *application) addressOfRequest(r *http.Request) string {
 		return remoteAddrWithoutPort()
 	}
 
-	// This should probably be configurable or look for multiple headers, not just this one
+	remote := remoteAddrWithoutPort()
+	trustedNets := a.Config.Server.trustedProxyNets
+
+	// Without a trusted-proxies allow-list, honoring XFF would let clients spoof.
+	if len(trustedNets) == 0 {
+		return remote
+	}
+
+	ipIsTrusted := func(ipStr string) bool {
+		ip := net.ParseIP(strings.TrimSpace(ipStr))
+		if ip == nil {
+			return false
+		}
+		for _, n := range trustedNets {
+			if n.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !ipIsTrusted(remote) {
+		return remote
+	}
+
 	forwardedFor := r.Header.Get("X-Forwarded-For")
 	if forwardedFor == "" {
-		return remoteAddrWithoutPort()
+		return remote
 	}
 
 	ips := strings.Split(forwardedFor, ",")
-	if len(ips) == 0 || ips[0] == "" {
-		return remoteAddrWithoutPort()
+	// Walk right-to-left, skipping trusted proxies; return the first untrusted hop.
+	for i := len(ips) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(ips[i])
+		if candidate == "" {
+			continue
+		}
+		if ipIsTrusted(candidate) {
+			continue
+		}
+		return candidate
 	}
 
-	return ips[0]
+	return remote
 }
 
 func (a *application) handleNotFound(w http.ResponseWriter, _ *http.Request) {
@@ -710,15 +783,31 @@ func (a *application) VersionedAssetPath(asset string) string {
 		"?v=" + strconv.FormatInt(a.CreatedAt.Unix(), 10)
 }
 
+const todoMaxBodyBytes = 1 << 20 // 1 MiB
+
+func (a *application) authorizeTodoRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	listID := r.PathValue("listID")
+	pg, exists := a.todoListIDToPage[listID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return "", false
+	}
+	if a.handleAccessControl(w, r, pg, showUnauthorizedJSON) {
+		return "", false
+	}
+	return listID, true
+}
+
 func (a *application) handleTodoLoad(w http.ResponseWriter, r *http.Request) {
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+	listID, ok := a.authorizeTodoRequest(w, r)
+	if !ok {
 		return
 	}
 
-	listID := r.PathValue("listID")
 	tasks, err := a.todoStorage.loadTasks(listID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("todo load: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -727,30 +816,69 @@ func (a *application) handleTodoLoad(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) handleTodoSave(w http.ResponseWriter, r *http.Request) {
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+	listID, ok := a.authorizeTodoRequest(w, r)
+	if !ok {
 		return
 	}
 
-	listID := r.PathValue("listID")
-
+	r.Body = http.MaxBytesReader(w, r.Body, todoMaxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "reading body: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
 	var tasks []todoTask
 	if err := json.Unmarshal(body, &tasks); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	if err := a.todoStorage.saveTasks(listID, tasks); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("todo save: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *application) securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "SAMEORIGIN")
+		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"img-src 'self' data: blob: https: http:; "+
+				"media-src 'self' data: blob: https: http:; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"script-src 'self' 'unsafe-inline'; "+
+				"font-src 'self' data:; "+
+				"connect-src 'self' https: http:; "+
+				"frame-src *; "+
+				"frame-ancestors 'self'; "+
+				"base-uri 'self'; "+
+				"form-action 'self'")
+		if a.Config.Server.HTTPS || a.isRequestHTTPS(r) {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *application) isRequestHTTPS(r *http.Request) bool {
+	if a.Config.Server.HTTPS {
+		return true
+	}
+	if r.TLS != nil {
+		return true
+	}
+	if a.Config.Server.Proxied {
+		return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	}
+	return false
 }
 
 func (a *application) server() (func() error, func() error) {
@@ -859,7 +987,7 @@ func (a *application) server() (func() error, func() error) {
 
 	server := http.Server{
 		Addr:    fmt.Sprintf("%s:%d", a.Config.Server.Host, a.Config.Server.Port),
-		Handler: mux,
+		Handler: a.securityHeadersMiddleware(mux),
 	}
 
 	start := func() error {
@@ -879,6 +1007,9 @@ func (a *application) server() (func() error, func() error) {
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	go a.sseUpdateLoop(ctx)
+	if a.oidcSessions != nil {
+		go a.oidcSessions.runSweeper(ctx, 15*time.Minute, OIDC_SESSION_VALID_PERIOD)
+	}
 
 	stop := func() error {
 		cancelCtx()
