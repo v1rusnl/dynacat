@@ -844,28 +844,38 @@ func (a *application) handleTodoSave(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) securityHeadersMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		h := w.Header()
-		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "SAMEORIGIN")
-		h.Set("Referrer-Policy", "same-origin")
-		h.Set("Content-Security-Policy",
-			"default-src 'self'; "+
-				"img-src 'self' data: blob: https: http:; "+
-				"media-src 'self' data: blob: https: http:; "+
-				"style-src 'self' 'unsafe-inline'; "+
-				"script-src 'self' 'unsafe-inline'; "+
-				"font-src 'self' data:; "+
-				"connect-src 'self' https: http:; "+
-				"frame-src *; "+
-				"frame-ancestors 'self'; "+
-				"base-uri 'self'; "+
-				"form-action 'self'")
-		if a.Config.Server.HTTPS || a.isRequestHTTPS(r) {
-			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
-		}
-		next.ServeHTTP(w, r)
-	})
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        h := w.Header()
+        h.Set("X-Content-Type-Options", "nosniff")
+        h.Set("Referrer-Policy", "same-origin")
+
+        frameAncestors := "'self'"
+        if allowed := os.Getenv("ALLOWED_FRAME_ANCESTORS"); allowed != "" {
+            frameAncestors = "'self' " + allowed
+        }
+
+        if os.Getenv("ALLOWED_FRAME_ANCESTORS") == "" {
+            h.Set("X-Frame-Options", "SAMEORIGIN")
+        }
+
+        h.Set("Content-Security-Policy",
+            "default-src 'self'; "+
+                "img-src 'self' data: blob: https: http:; "+
+                "media-src 'self' data: blob: https: http:; "+
+                "style-src 'self' 'unsafe-inline'; "+
+                "script-src 'self' 'unsafe-inline'; "+
+                "font-src 'self' data:; "+
+                "connect-src 'self' https: http:; "+
+                "frame-src *; "+
+                "frame-ancestors "+frameAncestors+"; "+
+                "base-uri 'self'; "+
+                "form-action 'self'")
+
+        if a.Config.Server.HTTPS || a.isRequestHTTPS(r) {
+            h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+        }
+        next.ServeHTTP(w, r)
+    })
 }
 
 func (a *application) isRequestHTTPS(r *http.Request) bool {
