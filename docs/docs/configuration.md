@@ -2195,6 +2195,19 @@ and then use it in your `dynacat.yml` like this:
 
 This way you can safely check your `dynacat.yml` in version control without exposing the token.
 
+##### `allowed-frame-ancestors`
+If you want to use Dynacat as an iframe in another Website (e.g. Homepage, Homarr etc.), you need to tell Dynacat the domain name of it.
+
+You can also specify the value for this variable through an ENV variable using the syntax `${ALLOWED_FRAME_ANCESTORS}` where `ALLOWED_FRAME_ANCESTORS` is the name of the variable that holds the URLs. If you've installed Dynacat through docker you can also specify the token in your docker-compose:
+
+```yaml
+services:
+  dynacat:
+    image: Panonim/dynacat
+    environment:
+      - ALLOWED_FRAME_ANCESTORS=https://sub1.domain.com https://sub2.domain.com
+```
+
 ##### `gitlab-token`
 Same as the above but used when fetching GitLab releases.
 
