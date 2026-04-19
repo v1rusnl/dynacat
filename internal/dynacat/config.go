@@ -8,6 +8,7 @@ import (
 	"iter"
 	"log"
 	"maps"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -29,18 +30,24 @@ const (
 
 type config struct {
 	Server struct {
-		Host       string `yaml:"host"`
-		Port       uint16 `yaml:"port"`
-		Proxied    bool   `yaml:"proxied"`
-		AssetsPath string `yaml:"assets-path"`
-		CacheDir   string `yaml:"cache-dir"`
-		BaseURL    string `yaml:"base-url"`
-		DBPath     string `yaml:"db-path"`
+		Host           string   `yaml:"host"`
+		Port           uint16   `yaml:"port"`
+		Proxied        bool     `yaml:"proxied"`
+		TrustedProxies []string `yaml:"trusted-proxies"`
+		HTTPS          bool     `yaml:"https"`
+		AssetsPath     string   `yaml:"assets-path"`
+		CacheDir       string   `yaml:"cache-dir"`
+		BaseURL        string   `yaml:"base-url"`
+		DBPath         string   `yaml:"db-path"`
+		trustedProxyNets []*net.IPNet `yaml:"-"`
 	} `yaml:"server"`
 
 	Auth struct {
-		SecretKey string           `yaml:"secret-key"`
-		Users     map[string]*user `yaml:"users"`
+		SecretKey       string           `yaml:"secret-key"`
+		RequireAuth     *bool            `yaml:"require-auth"`
+		DisablePassword bool             `yaml:"disable-password"`
+		Users           map[string]*user `yaml:"users"`
+		OIDC            *oidcConfig      `yaml:"oidc"`
 	} `yaml:"auth"`
 
 	Document struct {
@@ -70,6 +77,18 @@ type config struct {
 	Pages []page `yaml:"pages"`
 }
 
+type oidcConfig struct {
+	IssuerURL     string   `yaml:"issuer-url"`
+	ClientID      string   `yaml:"client-id"`
+	ClientSecret  string   `yaml:"client-secret"`
+	RedirectURL   string   `yaml:"redirect-url"`
+	Scopes        []string `yaml:"scopes"`
+	UsernameClaim string   `yaml:"username-claim"`
+	GroupsClaim   string   `yaml:"groups-claim"`
+	AllowedGroups []string `yaml:"allowed-groups"`
+	AllowedUsers  []string `yaml:"allowed-users"`
+}
+
 type user struct {
 	Password           string `yaml:"password"`
 	PasswordHashString string `yaml:"password-hash"`
@@ -79,6 +98,7 @@ type user struct {
 type page struct {
 	Title                  string  `yaml:"name"`
 	Slug                   string  `yaml:"slug"`
+	DynamicUpdates         *bool   `yaml:"dynamic-updates"`
 	Width                  string  `yaml:"width"`
 	DesktopNavigationWidth string  `yaml:"desktop-navigation-width"`
 	ShowMobileHeader       bool    `yaml:"show-mobile-header"`
@@ -90,8 +110,14 @@ type page struct {
 		Size    string  `yaml:"size"`
 		Widgets widgets `yaml:"widgets"`
 	} `yaml:"columns"`
+	AllowedUsers       []string   `yaml:"allowed-users"`
+	AllowedGroups      []string   `yaml:"allowed-groups"`
 	PrimaryColumnIndex int8       `yaml:"-"`
 	mu                 sync.Mutex `yaml:"-"`
+}
+
+func (p *page) DynamicUpdatesEnabled() bool {
+	return p.DynamicUpdates == nil || *p.DynamicUpdates
 }
 
 func newConfigFromYAML(contents []byte) (*config, error) {
@@ -225,7 +251,12 @@ func parseConfigVariableOfType(variableType, variableName string) (string, bool,
 			return "", false, fmt.Errorf("readFileFromEnv: file path %s is not absolute", filePath)
 		}
 
-		fileContents, err := os.ReadFile(filePath)
+		cleaned := filepath.Clean(filePath)
+		if !isReadFileFromEnvPathAllowed(cleaned) {
+			return "", false, fmt.Errorf("readFileFromEnv: file path %s is not within an allowed prefix", filePath)
+		}
+
+		fileContents, err := os.ReadFile(cleaned)
 		if err != nil {
 			return "", false, fmt.Errorf("readFileFromEnv: reading file from %s: %v", variableName, err)
 		}
@@ -234,6 +265,35 @@ func parseConfigVariableOfType(variableType, variableName string) (string, bool,
 	default:
 		return "", true, nil
 	}
+}
+
+var defaultReadFileFromEnvPrefixes = []string{
+	"/run/secrets/",
+	"/etc/dynacat/secrets/",
+	"/var/run/secrets/",
+}
+
+func isReadFileFromEnvPathAllowed(cleaned string) bool {
+	prefixes := defaultReadFileFromEnvPrefixes
+	if extra := os.Getenv("DYNACAT_READ_FILE_FROM_ENV_ROOTS"); extra != "" {
+		for _, p := range strings.Split(extra, ":") {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if !strings.HasSuffix(p, "/") {
+				p += "/"
+			}
+			prefixes = append(prefixes, p)
+		}
+	}
+
+	for _, p := range prefixes {
+		if strings.HasPrefix(cleaned, p) {
+			return true
+		}
+	}
+	return false
 }
 
 func formatWidgetInitError(err error, w widget) error {
@@ -456,8 +516,34 @@ func isConfigStateValid(config *config) error {
 		return fmt.Errorf("no pages configured")
 	}
 
-	if len(config.Auth.Users) > 0 && config.Auth.SecretKey == "" {
-		return fmt.Errorf("secret-key must be set when users are configured")
+	hasAnyAuth := len(config.Auth.Users) > 0 || config.Auth.OIDC != nil
+	hasAnyAuthMethod := (len(config.Auth.Users) > 0 && !config.Auth.DisablePassword) || config.Auth.OIDC != nil
+	if hasAnyAuth && config.Auth.SecretKey == "" {
+		return fmt.Errorf("secret-key must be set when auth is configured")
+	}
+
+	if config.Auth.RequireAuth != nil && *config.Auth.RequireAuth && !hasAnyAuthMethod {
+		return fmt.Errorf("require-auth cannot be true without a configured auth method")
+	}
+
+	if config.Auth.OIDC != nil {
+		oidc := config.Auth.OIDC
+		if oidc.IssuerURL == "" {
+			return fmt.Errorf("oidc: issuer-url is required")
+		}
+		if oidc.ClientID == "" {
+			return fmt.Errorf("oidc: client-id is required")
+		}
+		if oidc.ClientSecret == "" {
+			return fmt.Errorf("oidc: client-secret is required")
+		}
+		if oidc.RedirectURL == "" {
+			return fmt.Errorf("oidc: redirect-url is required")
+		}
+	}
+
+	if config.Auth.DisablePassword && config.Auth.OIDC == nil {
+		return fmt.Errorf("disable-password requires oidc to be configured")
 	}
 
 	for username := range config.Auth.Users {
@@ -475,8 +561,8 @@ func isConfigStateValid(config *config) error {
 			if user.PasswordHashString == "" {
 				return fmt.Errorf("user %s must have a password or a password-hash set", username)
 			}
-		} else if len(user.Password) < 6 {
-			return fmt.Errorf("the password for %s must be at least 6 characters", username)
+		} else if len(user.Password) < 12 {
+			return fmt.Errorf("the password for %s must be at least 12 characters", username)
 		}
 	}
 
@@ -488,6 +574,10 @@ func isConfigStateValid(config *config) error {
 
 	for i := range config.Pages {
 		page := &config.Pages[i]
+
+		if (len(page.AllowedUsers) > 0 || len(page.AllowedGroups) > 0) && !hasAnyAuthMethod {
+			return fmt.Errorf("page %d has allowed-users/allowed-groups but no auth method is configured", i+1)
+		}
 
 		if page.Title == "" {
 			return fmt.Errorf("page %d has no name", i+1)

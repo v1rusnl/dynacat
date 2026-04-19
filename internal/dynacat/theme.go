@@ -13,6 +13,10 @@ var (
 )
 
 func (a *application) handleThemeChangeRequest(w http.ResponseWriter, r *http.Request) {
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
+
 	themeKey := r.PathValue("key")
 
 	properties, exists := a.Config.Theme.Presets.Get(themeKey)

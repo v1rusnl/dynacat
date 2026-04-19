@@ -244,6 +244,33 @@ func (i *customIconField) cacheURL(cache *imageCache) {
 	i.URL = template.URL(cachedURL)
 }
 
+func (i *customIconField) resolveAssetURL(baseURL string) {
+	currentURL := strings.TrimSpace(string(i.URL))
+	if currentURL == "" {
+		return
+	}
+
+	if strings.HasPrefix(currentURL, "assets/") {
+		currentURL = "/" + currentURL
+	}
+
+	if !strings.HasPrefix(currentURL, "/assets/") {
+		return
+	}
+
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	i.URL = template.URL(baseURL + currentURL)
+}
+
+func (i *customIconField) prepare(providers *widgetProviders) {
+	if providers == nil {
+		return
+	}
+
+	i.resolveAssetURL(providers.baseURL)
+	i.cacheURL(providers.imageCache)
+}
+
 func dashboardIconWebpFallbackURL(rawURL string) (string, bool) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {

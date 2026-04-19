@@ -114,8 +114,11 @@ function setupSearchBoxes() {
         const defaultSearchUrl = widget.dataset.defaultSearchUrl;
         const target = widget.dataset.target || "_blank";
         const newTab = widget.dataset.newTab === "true";
+        const formElement = widget.getElementsByClassName("search-form")[0];
         const inputElement = widget.getElementsByClassName("search-input")[0];
         const bangElement = widget.getElementsByClassName("search-bang")[0];
+        const bangIconElement = widget.querySelector(".search-bang-icon");
+        const searchIconElement = widget.querySelector(".search-icon");
         const bangs = widget.querySelectorAll(".search-bangs > input");
         const bangsMap = {};
         const kbdElement = widget.getElementsByTagName("kbd")[0];
@@ -127,6 +130,34 @@ function setupSearchBoxes() {
             bangsMap[bang.dataset.shortcut] = bang;
         }
 
+        const submitSearch = (openInNewTab) => {
+            const input = inputElement.value.trim();
+            let query;
+            let searchUrlTemplate;
+
+            if (currentBang != null) {
+                query = input.slice(currentBang.dataset.shortcut.length + 1);
+                searchUrlTemplate = currentBang.dataset.url;
+            } else {
+                query = input;
+                searchUrlTemplate = defaultSearchUrl;
+            }
+            if (query.length == 0 && currentBang == null) {
+                return;
+            }
+
+            const url = searchUrlTemplate.replace("!QUERY!", encodeURIComponent(query));
+
+            if (openInNewTab) {
+                window.open(url, target).focus();
+            } else {
+                window.location.href = url;
+            }
+
+            lastQuery = query;
+            inputElement.value = "";
+        };
+
         const handleKeyDown = (event) => {
             if (event.key == "Escape") {
                 inputElement.blur();
@@ -134,32 +165,8 @@ function setupSearchBoxes() {
             }
 
             if (event.key == "Enter") {
-                const input = inputElement.value.trim();
-                let query;
-                let searchUrlTemplate;
-
-                if (currentBang != null) {
-                    query = input.slice(currentBang.dataset.shortcut.length + 1);
-                    searchUrlTemplate = currentBang.dataset.url;
-                } else {
-                    query = input;
-                    searchUrlTemplate = defaultSearchUrl;
-                }
-                if (query.length == 0 && currentBang == null) {
-                    return;
-                }
-
-                const url = searchUrlTemplate.replace("!QUERY!", encodeURIComponent(query));
-
-                if (newTab && !event.ctrlKey || !newTab && event.ctrlKey) {
-                    window.open(url, target).focus();
-                } else {
-                    window.location.href = url;
-                }
-
-                lastQuery = query;
-                inputElement.value = "";
-
+                const openInNewTab = newTab && !event.ctrlKey || !newTab && event.ctrlKey;
+                submitSearch(openInNewTab);
                 return;
             }
 
@@ -169,9 +176,26 @@ function setupSearchBoxes() {
             }
         };
 
+        formElement.addEventListener("submit", (event) => {
+            event.preventDefault();
+            submitSearch(newTab);
+        });
+
         const changeCurrentBang = (bang) => {
             currentBang = bang;
             bangElement.textContent = bang != null ? bang.dataset.title : "";
+            if (bangIconElement) {
+                if (bang != null && bang.dataset.icon) {
+                    bangIconElement.src = bang.dataset.icon;
+                    bangIconElement.classList.toggle("flat-icon", bang.dataset.iconAutoInvert === "true");
+                    bangIconElement.classList.add("active");
+                    if (searchIconElement) searchIconElement.style.display = "none";
+                } else {
+                    bangIconElement.classList.remove("active");
+                    bangIconElement.src = "";
+                    if (searchIconElement) searchIconElement.style.display = "";
+                }
+            }
         }
 
         const handleInput = (event) => {
@@ -210,6 +234,174 @@ function setupSearchBoxes() {
         kbdElement.addEventListener("mousedown", () => {
             requestAnimationFrame(() => inputElement.focus());
         });
+
+        // Handle autofocus for dynamically loaded content
+        if (inputElement.hasAttribute("autofocus")) {
+            // Use requestAnimationFrame to ensure DOM is fully ready
+            requestAnimationFrame(() => {
+                inputElement.focus();
+            });
+        }
+
+        // DDG Autocomplete
+        if (widget.dataset.autocomplete === "true") {
+            const autocompleteEl = widget.querySelector(".search-autocomplete");
+            let acItems = [];
+            let acIndex = -1;
+            let acDebounce = null;
+            let acVisible = false;
+            let acAbove = false;
+            let acRepositioner = null;
+            let acRepositionFrame = null;
+
+            const repositionAC = () => {
+                const rect = widget.getBoundingClientRect();
+                const viewportH = window.innerHeight;
+                const spaceBelow = viewportH - rect.bottom;
+                const spaceAbove = rect.top;
+                const maxH = 280;
+
+                // Switch to above if not enough space below and more space above
+                const goAbove = spaceBelow < 120 && spaceAbove > spaceBelow;
+
+                autocompleteEl.style.left = rect.left + "px";
+                autocompleteEl.style.width = rect.width + "px";
+
+                if (goAbove) {
+                    autocompleteEl.style.top = "";
+                    autocompleteEl.style.bottom = (viewportH - rect.top) + "px";
+                    autocompleteEl.style.maxHeight = Math.min(maxH, spaceAbove - 4) + "px";
+                } else {
+                    autocompleteEl.style.top = rect.bottom + "px";
+                    autocompleteEl.style.bottom = "";
+                    autocompleteEl.style.maxHeight = Math.min(maxH, spaceBelow - 4) + "px";
+                }
+
+                if (goAbove !== acAbove) {
+                    acAbove = goAbove;
+                }
+
+                // Keep direction classes in sync on every reposition so the initial
+                // below state also receives its border adjustments.
+                autocompleteEl.classList.toggle("search-autocomplete-above", goAbove);
+                widget.classList.toggle("search-suggestions-above", goAbove);
+                widget.classList.toggle("search-suggestions-below", !goAbove);
+            };
+
+            const throttledRepositionAC = () => {
+                if (acRepositionFrame) return;
+                acRepositionFrame = requestAnimationFrame(() => {
+                    repositionAC();
+                    acRepositionFrame = null;
+                });
+            };
+
+            const showAC = () => {
+                repositionAC();
+                if (!acRepositioner) {
+                    acRepositioner = throttledRepositionAC;
+                    window.addEventListener("scroll", throttledRepositionAC, { passive: true });
+                    window.addEventListener("resize", throttledRepositionAC, { passive: true });
+                }
+                autocompleteEl.classList.add("active");
+                acVisible = true;
+            };
+
+            const hideAC = () => {
+                if (acRepositioner) {
+                    window.removeEventListener("scroll", acRepositioner);
+                    window.removeEventListener("resize", acRepositioner);
+                    acRepositioner = null;
+                }
+                if (acRepositionFrame) {
+                    cancelAnimationFrame(acRepositionFrame);
+                    acRepositionFrame = null;
+                }
+                autocompleteEl.classList.remove("active", "search-autocomplete-above");
+                widget.classList.remove("search-suggestions-above", "search-suggestions-below");
+                acVisible = false;
+                acAbove = false;
+                acIndex = -1;
+            };
+
+            const setACIndex = (i) => {
+                const items = autocompleteEl.querySelectorAll(".search-autocomplete-item");
+                items.forEach((el, j) => el.classList.toggle("selected", j === i));
+                acIndex = i;
+            };
+
+            const renderAC = (suggestions) => {
+                acItems = suggestions;
+                acIndex = -1;
+                autocompleteEl.innerHTML = "";
+                if (suggestions.length === 0) { hideAC(); return; }
+                suggestions.forEach((phrase, idx) => {
+                    const item = document.createElement("div");
+                    item.className = "search-autocomplete-item";
+                    item.textContent = phrase;
+                    item.addEventListener("mousedown", (e) => {
+                        e.preventDefault();
+                        inputElement.value = phrase;
+                        hideAC();
+                        submitSearch(newTab);
+                    });
+                    item.addEventListener("mousemove", () => {
+                        setACIndex(idx);
+                    });
+                    autocompleteEl.appendChild(item);
+                });
+                showAC();
+            };
+
+            const fetchSuggestions = (query) => {
+                if (!query || query.length < 2 || currentBang != null) {
+                    hideAC();
+                    return;
+                }
+                fetch("/api/search/autocomplete?q=" + encodeURIComponent(query))
+                    .then((r) => r.json())
+                    .then((data) => {
+                        if (inputElement.value.trim() !== query) return;
+                        renderAC(data.map((d) => d.phrase));
+                    })
+                    .catch(() => hideAC());
+            };
+
+            inputElement.addEventListener("input", () => {
+                const value = inputElement.value.trim();
+                clearTimeout(acDebounce);
+                if (!value || currentBang != null) { hideAC(); return; }
+                acDebounce = setTimeout(() => fetchSuggestions(value), 220);
+            });
+
+            inputElement.addEventListener("keydown", (event) => {
+                if (!acVisible) return;
+                if (event.key === "ArrowDown") {
+                    event.preventDefault();
+                    setACIndex(Math.min(acIndex + 1, acItems.length - 1));
+                } else if (event.key === "ArrowUp") {
+                    event.preventDefault();
+                    setACIndex(Math.max(acIndex - 1, -1));
+                } else if (event.key === "Enter" && acIndex >= 0) {
+                    event.preventDefault();
+                    inputElement.value = acItems[acIndex];
+                    hideAC();
+                    submitSearch(newTab);
+                } else if (event.key === "Escape") {
+                    hideAC();
+                }
+            });
+
+            // Delay hide to guard against spurious blur (e.g. Chrome scroll-on-focus
+            // near viewport bottom). Only close if focus genuinely left the input.
+            inputElement.addEventListener("blur", () => {
+                setTimeout(() => {
+                    if (document.activeElement !== inputElement) {
+                        hideAC();
+                    }
+                }, 200);
+            });
+        }
     }
 }
 
@@ -351,7 +543,10 @@ function setupLazyImages() {
                     const fallbackSrc = image.dataset.fallbackSrc;
                     if (fallbackSrc && image.src !== fallbackSrc) {
                         image.src = fallbackSrc;
+                        return;
                     }
+
+                    image.style.display = "none";
                 };
 
                 if (image.complete) {
@@ -480,22 +675,58 @@ function setupCollapsibleLists() {
 
         const collapseAfter = parseInt(list.dataset.collapseAfter);
 
+        const existingButton = list.nextElementSibling && list.nextElementSibling.classList.contains("expand-toggle-button")
+            ? list.nextElementSibling
+            : null;
+
         if (collapseAfter == -1) {
+            if (existingButton) {
+                existingButton.remove();
+            }
             continue;
         }
 
         if (list.children.length <= collapseAfter) {
+            if (existingButton) {
+                existingButton.remove();
+            }
+
+            list.classList.remove("container-expanded");
+            list.classList.remove("no-reveal-animation");
+
+            for (let c = 0; c < list.children.length; c++) {
+                const child = list.children[c];
+                child.classList.remove("collapsible-item");
+                child.style.removeProperty("animation-delay");
+            }
+
             continue;
         }
 
-        if (list.nextElementSibling && list.nextElementSibling.classList.contains("expand-toggle-button")) continue;
+        let button = existingButton;
 
-        attachExpandToggleButton(list);
+        if (!button || typeof button.setExpandedState !== "function") {
+            if (button) {
+                button.remove();
+            }
+
+            button = attachExpandToggleButton(list);
+        }
+
+        if (!button.isConnected) {
+            list.after(button);
+        }
 
         for (let c = collapseAfter; c < list.children.length; c++) {
             const child = list.children[c];
             child.classList.add("collapsible-item");
             child.style.animationDelay = ((c - collapseAfter) * 20).toString() + "ms";
+        }
+
+        for (let c = 0; c < collapseAfter; c++) {
+            const child = list.children[c];
+            child.classList.remove("collapsible-item");
+            child.style.removeProperty("animation-delay");
         }
     }
 }
@@ -516,17 +747,30 @@ function setupCollapsibleGrids() {
 
         const collapseAfterRows = parseInt(gridElement.dataset.collapseAfterRows);
 
+        const existingButton = gridElement.nextElementSibling && gridElement.nextElementSibling.classList.contains("expand-toggle-button")
+            ? gridElement.nextElementSibling
+            : null;
+
         if (collapseAfterRows == -1) {
+            if (existingButton) {
+                existingButton.remove();
+            }
             continue;
         }
 
-        if (gridElement.nextElementSibling && gridElement.nextElementSibling.classList.contains("expand-toggle-button")) continue;
+        let button = existingButton;
+
+        if (!button || typeof button.setExpandedState !== "function") {
+            if (button) {
+                button.remove();
+            }
+
+            button = attachExpandToggleButton(gridElement);
+        }
 
         const getCardsPerRow = () => {
             return parseInt(getComputedStyle(gridElement).getPropertyValue('--cards-per-row'));
         };
-
-        const button = attachExpandToggleButton(gridElement);
 
         let cardsPerRow;
 
@@ -740,6 +984,16 @@ async function setupTodos() {
     }
 }
 
+async function setupStopwatches() {
+    const elems = document.getElementsByClassName("stopwatch");
+    if (elems.length == 0) return;
+
+    const stopwatch = await import('./stopwatch.js');
+
+    for (let i = 0; i < elems.length; i++)
+        stopwatch.default(elems[i]);
+}
+
 function setupTruncatedElementTitles() {
     const elements = document.querySelectorAll(".text-truncate, .single-line-titles .title, .text-truncate-2-lines, .text-truncate-3-lines");
 
@@ -867,6 +1121,7 @@ async function setupPage() {
         setupClocks()
         await setupCalendars();
         await setupTodos();
+        await setupStopwatches();
         setupCarousels();
         setupSearchBoxes();
         setupCollapsibleLists();
@@ -932,6 +1187,14 @@ async function updateWidget(widgetElement) {
     const widgetTopBefore = widgetElement.getBoundingClientRect().top;
     const collapsibleContainerStates = getCollapsibleContainerStates(widgetElement);
     const newWidget = await fetchWidgetContent(widgetElement);
+
+    if (newWidget) {
+        if (newWidget.dataset.widgetHidden === "true") {
+            widgetElement.dataset.widgetHidden = "true";
+        } else {
+            widgetElement.removeAttribute("data-widget-hidden");
+        }
+}
 
     if (newWidget && widgetElement.outerHTML !== newWidget.outerHTML) {
         const oldContent = widgetElement.querySelector('.widget-content');
@@ -1303,6 +1566,10 @@ function handleWidgetPollingVisibilityChange() {
 }
 
 function setupWidgetPolling() {
+    if (!pageData.dynamicUpdateEnabled) {
+        return;
+    }
+
     const pollingWidgets = document.querySelectorAll('.widget[data-update-interval]');
     const seenWidgets = new Set();
 
@@ -1376,6 +1643,12 @@ async function applyContentUpdate() {
                     const newHeader = tempWidget.querySelector('.widget-header');
                     if (oldHeader && newHeader && oldHeader.innerHTML !== newHeader.innerHTML) {
                         oldHeader.innerHTML = newHeader.innerHTML;
+                    }
+
+                    if (tempWidget.dataset.widgetHidden === "true") {
+                        realWidget.dataset.widgetHidden = "true";
+                    } else {
+                        realWidget.removeAttribute("data-widget-hidden");
                     }
 
                     anyReplaced = true;

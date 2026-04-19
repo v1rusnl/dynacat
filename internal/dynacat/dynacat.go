@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -17,7 +18,9 @@ import (
 	"sync"
 	"time"
 
+	gooidc "github.com/coreos/go-oidc/v3/oidc"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/oauth2"
 )
 
 var (
@@ -29,7 +32,7 @@ var (
 const STATIC_ASSETS_CACHE_DURATION = 24 * time.Hour
 const REMOTE_IMAGE_CACHE_DURATION = 7 * 24 * time.Hour
 
-var reservedPageSlugs = []string{"login", "logout"}
+var reservedPageSlugs = []string{"login", "logout", "callback"}
 
 type imageProxyInfo struct {
 	URL           string
@@ -48,12 +51,20 @@ type application struct {
 	widgetToPage map[uint64]*page
 
 	RequiresAuth           bool
+	OIDCEnabled            bool
+	PasswordEnabled        bool
 	authSecretKey          []byte
 	usernameHashToUsername map[string]string
 	authAttemptsMu         sync.Mutex
 	failedAuthAttempts     map[string]*failedAuthAttempt
 
-	todoStorage *todoStorage
+	oidcProvider *gooidc.Provider
+	oidcVerifier *gooidc.IDTokenVerifier
+	oauth2Config *oauth2.Config
+	oidcSessions *sessionStore
+
+	todoStorage      *todoStorage
+	todoListIDToPage map[string]*page
 
 	sseMu                sync.RWMutex
 	sseClients           map[*sseClient]struct{}
@@ -73,8 +84,9 @@ func newApplication(c *config) (*application, error) {
 		slugToPage:     make(map[string]*page),
 		widgetByID:     make(map[uint64]widget),
 		widgetToPage:   make(map[uint64]*page),
-		sseClients:     make(map[*sseClient]struct{}),
-		imageProxyURLs: make(map[string]imageProxyInfo),
+		sseClients:       make(map[*sseClient]struct{}),
+		imageProxyURLs:   make(map[string]imageProxyInfo),
+		todoListIDToPage: make(map[string]*page),
 	}
 	config := &app.Config
 
@@ -82,7 +94,8 @@ func newApplication(c *config) (*application, error) {
 	// Init auth
 	//
 
-	if len(config.Auth.Users) > 0 {
+	hasAnyAuth := len(config.Auth.Users) > 0 || config.Auth.OIDC != nil
+	if hasAnyAuth {
 		secretBytes, err := base64.StdEncoding.DecodeString(config.Auth.SecretKey)
 		if err != nil {
 			return nil, fmt.Errorf("decoding secret-key: %v", err)
@@ -92,13 +105,23 @@ func newApplication(c *config) (*application, error) {
 			return nil, fmt.Errorf("secret-key must be exactly %d bytes", AUTH_SECRET_KEY_LENGTH)
 		}
 
-		app.usernameHashToUsername = make(map[string]string)
+		app.authSecretKey = secretBytes
 		app.failedAuthAttempts = make(map[string]*failedAuthAttempt)
-		app.RequiresAuth = true
+
+		requireAuth := true
+		if config.Auth.RequireAuth != nil {
+			requireAuth = *config.Auth.RequireAuth
+		}
+		app.RequiresAuth = requireAuth
+	}
+
+	if len(config.Auth.Users) > 0 && !config.Auth.DisablePassword {
+		app.PasswordEnabled = true
+		app.usernameHashToUsername = make(map[string]string)
 
 		for username := range config.Auth.Users {
 			user := config.Auth.Users[username]
-			usernameHash, err := computeUsernameHash(username, secretBytes)
+			usernameHash, err := computeUsernameHash(username, app.authSecretKey)
 			if err != nil {
 				return nil, fmt.Errorf("computing username hash for user %s: %v", username, err)
 			}
@@ -117,8 +140,18 @@ func newApplication(c *config) (*application, error) {
 				user.PasswordHash = hashedPassword
 			}
 		}
+	}
 
-		app.authSecretKey = secretBytes
+	if config.Auth.OIDC != nil {
+		provider, verifier, oauth2Cfg, err := initOIDCProvider(config.Auth.OIDC)
+		if err != nil {
+			return nil, fmt.Errorf("initializing OIDC: %v", err)
+		}
+		app.oidcProvider = provider
+		app.oidcVerifier = verifier
+		app.oauth2Config = oauth2Cfg
+		app.oidcSessions = newSessionStore()
+		app.OIDCEnabled = true
 	}
 
 	//
@@ -181,6 +214,27 @@ func newApplication(c *config) (*application, error) {
 	}
 	config.Server.CacheDir = cacheDir
 
+	for _, cidr := range config.Server.TrustedProxies {
+		cidr = strings.TrimSpace(cidr)
+		if cidr == "" {
+			continue
+		}
+		if !strings.Contains(cidr, "/") {
+			if ip := net.ParseIP(cidr); ip != nil {
+				if ip.To4() != nil {
+					cidr = cidr + "/32"
+				} else {
+					cidr = cidr + "/128"
+				}
+			}
+		}
+		_, ipnet, err := net.ParseCIDR(cidr)
+		if err != nil {
+			return nil, fmt.Errorf("invalid trusted-proxies entry %q: %v", cidr, err)
+		}
+		config.Server.trustedProxyNets = append(config.Server.trustedProxyNets, ipnet)
+	}
+
 	//
 	// Init pages
 	//
@@ -226,6 +280,22 @@ func newApplication(c *config) (*application, error) {
 			page.DesktopNavigationWidth = page.Width
 		}
 
+		var collectTodoListIDs func(ws widgets)
+		collectTodoListIDs = func(ws widgets) {
+			for _, w := range ws {
+				switch v := w.(type) {
+				case *todoWidget:
+					if v.Storage == "server" && v.TodoID != "" {
+						app.todoListIDToPage[v.TodoID] = page
+					}
+				case *groupWidget:
+					collectTodoListIDs(v.Widgets)
+				case *splitColumnWidget:
+					collectTodoListIDs(v.Widgets)
+				}
+			}
+		}
+
 		registerWidget := func(widget widget) {
 			app.widgetByID[widget.GetID()] = widget
 			app.widgetToPage[widget.GetID()] = page
@@ -235,6 +305,7 @@ func newApplication(c *config) (*application, error) {
 		for i := range page.HeadWidgets {
 			registerWidget(page.HeadWidgets[i])
 		}
+		collectTodoListIDs(page.HeadWidgets)
 
 		for c := range page.Columns {
 			column := &page.Columns[c]
@@ -246,6 +317,7 @@ func newApplication(c *config) (*application, error) {
 			for w := range column.Widgets {
 				registerWidget(column.Widgets[w])
 			}
+			collectTodoListIDs(column.Widgets)
 		}
 	}
 
@@ -384,6 +456,10 @@ func (p *page) updateOutdatedWidgets() {
 }
 
 func (p *page) GetMinUpdateInterval() int64 {
+	if !p.DynamicUpdatesEnabled() {
+		return 0
+	}
+
 	min, found := getMinUpdateIntervalForWidgets(p.HeadWidgets)
 
 	for c := range p.Columns {
@@ -448,9 +524,12 @@ type templateRequestData struct {
 }
 
 type templateData struct {
-	App     *application
-	Page    *page
-	Request templateRequestData
+	App             *application
+	Page            *page
+	Request         templateRequestData
+	AuthUser        *authenticatedUser
+	AccessiblePages []*page
+	OIDCError       string
 }
 
 func (a *application) populateTemplateRequestData(data *templateRequestData, r *http.Request) {
@@ -469,6 +548,24 @@ func (a *application) populateTemplateRequestData(data *templateRequestData, r *
 	data.Theme = theme
 }
 
+func (a *application) getAccessiblePages(user *authenticatedUser) []*page {
+	pages := make([]*page, 0, len(a.Config.Pages))
+	for i := range a.Config.Pages {
+		p := &a.Config.Pages[i]
+		if user == nil {
+			// Unauthenticated: only pages with no restrictions (when RequireAuth is false)
+			if len(p.AllowedUsers) == 0 && len(p.AllowedGroups) == 0 {
+				pages = append(pages, p)
+			}
+		} else {
+			if a.isUserAllowedOnPage(user, p) {
+				pages = append(pages, p)
+			}
+		}
+	}
+	return pages
+}
+
 func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) {
 	page, exists := a.slugToPage[r.PathValue("page")]
 	if !exists {
@@ -476,21 +573,25 @@ func (a *application) handlePageRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if a.handleUnauthorizedResponse(w, r, redirectToLogin) {
+	if a.handleAccessControl(w, r, page, redirectToLogin) {
 		return
 	}
 
+	user := a.getAuthenticatedUser(w, r)
 	data := templateData{
-		Page: page,
-		App:  a,
+		Page:            page,
+		App:             a,
+		AuthUser:        user,
+		AccessiblePages: a.getAccessiblePages(user),
 	}
 	a.populateTemplateRequestData(&data.Request, r)
 
 	var responseBytes bytes.Buffer
 	err := pageTemplate.Execute(&responseBytes, data)
 	if err != nil {
+		log.Printf("rendering page template: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte("internal server error"))
 		return
 	}
 
@@ -504,7 +605,7 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+	if a.handleAccessControl(w, r, page, showUnauthorizedJSON) {
 		return
 	}
 
@@ -532,8 +633,9 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 	w.Header().Set("X-Dynacat-Cache-Building", strconv.FormatBool(isCacheBuilding))
 
 	if err != nil {
+		log.Printf("rendering page content template: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte("internal server error"))
 		return
 	}
 
@@ -542,12 +644,9 @@ func (a *application) handlePageContentRequest(w http.ResponseWriter, r *http.Re
 
 func (a *application) addressOfRequest(r *http.Request) string {
 	remoteAddrWithoutPort := func() string {
-		for i := len(r.RemoteAddr) - 1; i >= 0; i-- {
-			if r.RemoteAddr[i] == ':' {
-				return r.RemoteAddr[:i]
-			}
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			return host
 		}
-
 		return r.RemoteAddr
 	}
 
@@ -555,18 +654,50 @@ func (a *application) addressOfRequest(r *http.Request) string {
 		return remoteAddrWithoutPort()
 	}
 
-	// This should probably be configurable or look for multiple headers, not just this one
+	remote := remoteAddrWithoutPort()
+	trustedNets := a.Config.Server.trustedProxyNets
+
+	// Without a trusted-proxies allow-list, honoring XFF would let clients spoof.
+	if len(trustedNets) == 0 {
+		return remote
+	}
+
+	ipIsTrusted := func(ipStr string) bool {
+		ip := net.ParseIP(strings.TrimSpace(ipStr))
+		if ip == nil {
+			return false
+		}
+		for _, n := range trustedNets {
+			if n.Contains(ip) {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !ipIsTrusted(remote) {
+		return remote
+	}
+
 	forwardedFor := r.Header.Get("X-Forwarded-For")
 	if forwardedFor == "" {
-		return remoteAddrWithoutPort()
+		return remote
 	}
 
 	ips := strings.Split(forwardedFor, ",")
-	if len(ips) == 0 || ips[0] == "" {
-		return remoteAddrWithoutPort()
+	// Walk right-to-left, skipping trusted proxies; return the first untrusted hop.
+	for i := len(ips) - 1; i >= 0; i-- {
+		candidate := strings.TrimSpace(ips[i])
+		if candidate == "" {
+			continue
+		}
+		if ipIsTrusted(candidate) {
+			continue
+		}
+		return candidate
 	}
 
-	return ips[0]
+	return remote
 }
 
 func (a *application) handleNotFound(w http.ResponseWriter, _ *http.Request) {
@@ -599,6 +730,10 @@ func (a *application) handleWidgetContentRequest(w http.ResponseWriter, r *http.
 		return
 	}
 
+	if a.handleAccessControl(w, r, page, showUnauthorizedJSON) {
+		return
+	}
+
 	page.mu.Lock()
 	defer page.mu.Unlock()
 
@@ -626,6 +761,16 @@ func (a *application) handleWidgetActionRequest(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	page, exists := a.widgetToPage[widgetID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return
+	}
+
+	if a.handleAccessControl(w, r, page, showUnauthorizedJSON) {
+		return
+	}
+
 	widget.handleRequest(w, r)
 }
 
@@ -638,15 +783,31 @@ func (a *application) VersionedAssetPath(asset string) string {
 		"?v=" + strconv.FormatInt(a.CreatedAt.Unix(), 10)
 }
 
+const todoMaxBodyBytes = 1 << 20 // 1 MiB
+
+func (a *application) authorizeTodoRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	listID := r.PathValue("listID")
+	pg, exists := a.todoListIDToPage[listID]
+	if !exists {
+		a.handleNotFound(w, r)
+		return "", false
+	}
+	if a.handleAccessControl(w, r, pg, showUnauthorizedJSON) {
+		return "", false
+	}
+	return listID, true
+}
+
 func (a *application) handleTodoLoad(w http.ResponseWriter, r *http.Request) {
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+	listID, ok := a.authorizeTodoRequest(w, r)
+	if !ok {
 		return
 	}
 
-	listID := r.PathValue("listID")
 	tasks, err := a.todoStorage.loadTasks(listID)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("todo load: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -655,30 +816,69 @@ func (a *application) handleTodoLoad(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *application) handleTodoSave(w http.ResponseWriter, r *http.Request) {
-	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+	listID, ok := a.authorizeTodoRequest(w, r)
+	if !ok {
 		return
 	}
 
-	listID := r.PathValue("listID")
-
+	r.Body = http.MaxBytesReader(w, r.Body, todoMaxBodyBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "reading body: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
 	var tasks []todoTask
 	if err := json.Unmarshal(body, &tasks); err != nil {
-		http.Error(w, "invalid JSON: "+err.Error(), http.StatusBadRequest)
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
 		return
 	}
 
 	if err := a.todoStorage.saveTasks(listID, tasks); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		log.Printf("todo save: %v", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *application) securityHeadersMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "SAMEORIGIN")
+		h.Set("Referrer-Policy", "same-origin")
+		h.Set("Content-Security-Policy",
+			"default-src 'self'; "+
+				"img-src 'self' data: blob: https: http:; "+
+				"media-src 'self' data: blob: https: http:; "+
+				"style-src 'self' 'unsafe-inline'; "+
+				"script-src 'self' 'unsafe-inline'; "+
+				"font-src 'self' data:; "+
+				"connect-src 'self' https: http:; "+
+				"frame-src *; "+
+				"frame-ancestors 'self'; "+
+				"base-uri 'self'; "+
+				"form-action 'self'")
+		if a.Config.Server.HTTPS || a.isRequestHTTPS(r) {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (a *application) isRequestHTTPS(r *http.Request) bool {
+	if a.Config.Server.HTTPS {
+		return true
+	}
+	if r.TLS != nil {
+		return true
+	}
+	if a.Config.Server.Proxied {
+		return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+	}
+	return false
 }
 
 func (a *application) server() (func() error, func() error) {
@@ -697,14 +897,23 @@ func (a *application) server() (func() error, func() error) {
 	mux.HandleFunc("POST /api/widgets/{widget}/action/{action...}", a.handleWidgetActionRequest)
 	mux.HandleFunc("GET /api/sse/updates", a.handleSSEUpdates)
 	mux.HandleFunc("GET /api/image-proxy/{hash}", a.handleImageProxyRequest)
+	mux.HandleFunc("GET /api/search/autocomplete", a.handleSearchAutocompleteRequest)
 	mux.HandleFunc("GET /api/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	if a.RequiresAuth {
+	if a.AnyAuthEnabled() {
 		mux.HandleFunc("GET /login", a.handleLoginPageRequest)
 		mux.HandleFunc("GET /logout", a.handleLogoutRequest)
+	}
+
+	if a.PasswordEnabled {
 		mux.HandleFunc("POST /api/authenticate", a.handleAuthenticationAttempt)
+	}
+
+	if a.OIDCEnabled {
+		mux.HandleFunc("GET /api/oidc/login", a.handleOIDCLogin)
+		mux.HandleFunc("GET /api/oidc/callback", a.handleOIDCCallback)
 	}
 
 	if a.todoStorage != nil {
@@ -721,13 +930,22 @@ func (a *application) server() (func() error, func() error) {
 	)
 
 	if a.Config.Server.CacheDir != "" {
-		mux.Handle(
-			"GET /.cache/{path...}",
-			http.StripPrefix(
-				"/.cache",
-				fileServerWithCache(http.Dir(a.Config.Server.CacheDir), REMOTE_IMAGE_CACHE_DURATION),
-			),
+		cacheHandler := http.StripPrefix(
+			"/.cache",
+			fileServerWithCache(http.Dir(a.Config.Server.CacheDir), REMOTE_IMAGE_CACHE_DURATION),
 		)
+
+		if a.RequiresAuth {
+			mux.Handle("GET /.cache/{path...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+					return
+				}
+
+				cacheHandler.ServeHTTP(w, r)
+			}))
+		} else {
+			mux.Handle("GET /.cache/{path...}", cacheHandler)
+		}
 	}
 
 	assetCacheControlValue := fmt.Sprintf(
@@ -754,11 +972,22 @@ func (a *application) server() (func() error, func() error) {
 
 	absAssetsPath, _ := filepath.Abs(assetsPath)
 	assetsFS := fileServerWithCache(http.Dir(assetsPath), 2*time.Hour)
-	mux.Handle("/assets/{path...}", http.StripPrefix("/assets/", assetsFS))
+	assetsHandler := http.StripPrefix("/assets/", assetsFS)
+	if a.RequiresAuth {
+		mux.Handle("/assets/{path...}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+				return
+			}
+
+			assetsHandler.ServeHTTP(w, r)
+		}))
+	} else {
+		mux.Handle("/assets/{path...}", assetsHandler)
+	}
 
 	server := http.Server{
 		Addr:    fmt.Sprintf("%s:%d", a.Config.Server.Host, a.Config.Server.Port),
-		Handler: mux,
+		Handler: a.securityHeadersMiddleware(mux),
 	}
 
 	start := func() error {
@@ -778,6 +1007,9 @@ func (a *application) server() (func() error, func() error) {
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 	go a.sseUpdateLoop(ctx)
+	if a.oidcSessions != nil {
+		go a.oidcSessions.runSweeper(ctx, 15*time.Minute, OIDC_SESSION_VALID_PERIOD)
+	}
 
 	stop := func() error {
 		cancelCtx()

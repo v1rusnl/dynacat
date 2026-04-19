@@ -17,7 +17,20 @@
     <div class="flex grow items-center justify-center" style="padding-bottom: 5rem">
         <h1 class="visually-hidden">Login</h1>
         <main id="login-container" class="grow login-bounds" style="display: none;">
-            <div class="animate-entrance">
+            {{- if .OIDCError }}
+            <div class="login-error-message" id="oidc-error-message">
+                {{- if eq .OIDCError "invalid_state" }}OIDC login failed: invalid state parameter
+                {{- else if eq .OIDCError "token_exchange" }}OIDC login failed: could not exchange token
+                {{- else if eq .OIDCError "token_verify" }}OIDC login failed: could not verify token
+                {{- else if eq .OIDCError "not_allowed" }}OIDC login failed: access denied
+                {{- else if eq .OIDCError "no_username" }}OIDC login failed: could not determine username
+                {{- else }}OIDC login failed: {{ .OIDCError }}
+                {{- end }}
+            </div>
+            {{- end }}
+
+            {{- if .App.PasswordEnabled }}
+            <div class="animate-entrance animate-delay-1">
                 <label class="form-label widget-header" for="username">Username</label>
                 <div class="form-input widget-content-frame padding-inline-widget flex gap-10 items-center">
                     <svg class="form-input-icon" fill="var(--color-text-subdue)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" aria-hidden="true">
@@ -27,7 +40,7 @@
                 </div>
             </div>
 
-            <div class="animate-entrance">
+            <div class="animate-entrance animate-delay-2">
                 <label class="form-label widget-header margin-top-20" for="password">Password</label>
                 <div class="form-input widget-content-frame padding-inline-widget flex gap-10 items-center">
                     <svg class="form-input-icon" fill="var(--color-text-subdue)" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" aria-hidden="true">
@@ -40,12 +53,41 @@
 
             <div class="login-error-message" id="error-message"></div>
 
-            <button class="login-button animate-entrance" id="login-button">
+            <button class="login-button animate-entrance animate-delay-3" id="login-button">
                 <div>LOGIN</div>
                 <svg stroke="currentColor" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" aria-hidden="true">
                     <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
                 </svg>
             </button>
+
+            {{- if .App.OIDCEnabled }}
+            <div class="login-divider animate-entrance animate-delay-4">
+                <span>or</span>
+            </div>
+            <div class="animate-entrance animate-delay-5">
+                <a href="{{ .App.Config.Server.BaseURL }}/api/oidc/login" class="oidc-login-button">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+                    </svg>
+                    <span>Login with SSO</span>
+                </a>
+            </div>
+            {{- end }}
+            {{- else }}
+            {{- if .App.OIDCEnabled }}
+            <div class="animate-entrance animate-delay-1">
+                <a href="{{ .App.Config.Server.BaseURL }}/api/oidc/login" class="oidc-login-button">
+                    <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 0 1 3 3m3 0a6 6 0 0 1-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1 1 21.75 8.25Z" />
+                    </svg>
+                    <span>Login with SSO</span>
+                </a>
+            </div>
+            {{- end }}
+
+            {{/* Password fallback elements needed by login.js - hidden when OIDC-only */}}
+            <div class="login-error-message" id="error-message" style="display:none"></div>
+            {{- end }}
         </main>
     </div>
     {{ template "footer.html" . }}

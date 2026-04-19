@@ -85,14 +85,14 @@ func (widget *bookmarksWidget) Render() template.HTML {
 }
 
 func (widget *bookmarksWidget) cacheIcons() {
-	if widget.Providers == nil || widget.Providers.imageCache == nil {
+	if widget.Providers == nil {
 		return
 	}
 
 	for g := range widget.Groups {
 		group := &widget.Groups[g]
 		for l := range group.Links {
-			group.Links[l].Icon.cacheURL(widget.Providers.imageCache)
+			group.Links[l].Icon.prepare(widget.Providers)
 		}
 	}
 }

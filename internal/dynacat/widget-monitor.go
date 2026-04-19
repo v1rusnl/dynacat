@@ -54,12 +54,12 @@ func (widget *monitorWidget) initialize() error {
 func (widget *monitorWidget) setProviders(providers *widgetProviders) {
 	widget.widgetBase.setProviders(providers)
 
-	if widget.Providers == nil || widget.Providers.imageCache == nil {
+	if widget.Providers == nil {
 		return
 	}
 
 	for i := range widget.Sites {
-		widget.Sites[i].Icon.cacheURL(widget.Providers.imageCache)
+		widget.Sites[i].Icon.prepare(widget.Providers)
 	}
 }
 

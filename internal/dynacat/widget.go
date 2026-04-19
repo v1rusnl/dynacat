@@ -65,6 +65,8 @@ func newWidget(widgetType string) (widget, error) {
 		w = &repositoryWidget{}
 	case "search":
 		w = &searchWidget{}
+	case "stopwatch":
+		w = &stopwatchWidget{}
 	case "extension":
 		w = &extensionWidget{}
 	case "group":
@@ -75,6 +77,8 @@ func newWidget(widgetType string) (widget, error) {
 		w = &splitColumnWidget{}
 	case "custom-api":
 		w = &customAPIWidget{}
+	case "dynawidgets":
+		w = &dynawidgetsWidget{}
 	case "docker-containers":
 		w = &dockerContainersWidget{}
 	case "docker-controller":
@@ -159,8 +163,10 @@ type widgetBase struct {
 	Providers           *widgetProviders     `yaml:"-"`
 	Type                string               `yaml:"type"`
 	Title               string               `yaml:"title"`
+	TitleIcon           customIconField      `yaml:"title-icon"`
 	TitleURL            string               `yaml:"title-url"`
 	HideHeader          bool                 `yaml:"hide-header"`
+	Hidden              bool                 `yaml:"-"`
 	CSSClass            string               `yaml:"css-class"`
 	CustomCacheDuration durationField        `yaml:"cache"`
 	UpdateInterval      *updateIntervalField `yaml:"update-interval"`
@@ -253,6 +259,7 @@ func (w *widgetBase) GetType() string {
 
 func (w *widgetBase) setProviders(providers *widgetProviders) {
 	w.Providers = providers
+	w.TitleIcon.prepare(providers)
 }
 
 func (w *widgetBase) IsDynamicUpdateEnabled() bool {

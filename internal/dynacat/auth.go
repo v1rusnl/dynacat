@@ -14,7 +14,6 @@ import (
 	mathrand "math/rand/v2"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -36,6 +35,12 @@ const AUTH_TOKEN_VALID_PERIOD = 14 * 24 * time.Hour // 14 days
 const AUTH_TOKEN_REGEN_BEFORE = 7 * 24 * time.Hour // 7 days
 
 var loginPageTemplate = mustParseTemplate("login.html", "document.html", "footer.html")
+
+type authenticatedUser struct {
+	Username string
+	Groups   []string
+	IsOIDC   bool
+}
 
 type doWhenUnauthorized int
 
@@ -178,6 +183,7 @@ func (a *application) handleAuthenticationAttempt(w http.ResponseWriter, r *http
 		a.authAttemptsMu.Unlock()
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -247,42 +253,138 @@ func (a *application) handleAuthenticationAttempt(w http.ResponseWriter, r *http
 	w.WriteHeader(http.StatusOK)
 }
 
+func (a *application) getAuthenticatedUser(w http.ResponseWriter, r *http.Request) *authenticatedUser {
+	// Check password session cookie
+	if a.PasswordEnabled && len(a.Config.Auth.Users) > 0 {
+		token, err := r.Cookie(AUTH_SESSION_COOKIE_NAME)
+		if err == nil && token.Value != "" {
+			usernameHash, shouldRegenerate, err := verifySessionToken(token.Value, a.authSecretKey, time.Now())
+			if err == nil {
+				username, exists := a.usernameHashToUsername[string(usernameHash)]
+				if exists {
+					if _, exists = a.Config.Auth.Users[username]; exists {
+						if shouldRegenerate {
+							newToken, err := generateSessionToken(username, a.authSecretKey, time.Now())
+							if err != nil {
+								log.Printf("Could not compute session token during regeneration: %v", err)
+							} else {
+								a.setAuthSessionCookie(w, r, newToken, time.Now().Add(AUTH_TOKEN_VALID_PERIOD))
+							}
+						}
+						return &authenticatedUser{Username: username, IsOIDC: false}
+					}
+				}
+			}
+		}
+	}
+
+	// Check OIDC session cookie
+	if a.OIDCEnabled && a.oidcSessions != nil {
+		sessionCookie, err := r.Cookie(OIDC_SESSION_COOKIE_NAME)
+		if err == nil && sessionCookie.Value != "" {
+			sess, ok := a.oidcSessions.get(sessionCookie.Value)
+			if ok {
+				// Check session expiry
+				if time.Since(sess.CreatedAt) < OIDC_SESSION_VALID_PERIOD {
+					return &authenticatedUser{
+						Username: sess.Username,
+						Groups:   sess.Groups,
+						IsOIDC:   true,
+					}
+				}
+				// Expired - clean up
+				a.oidcSessions.delete(sessionCookie.Value)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (a *application) isAuthorized(w http.ResponseWriter, r *http.Request) bool {
 	if !a.RequiresAuth {
 		return true
 	}
+	return a.getAuthenticatedUser(w, r) != nil
+}
 
-	token, err := r.Cookie(AUTH_SESSION_COOKIE_NAME)
-	if err != nil || token.Value == "" {
-		return false
+func (a *application) isUserAllowedOnPage(user *authenticatedUser, p *page) bool {
+	// No restrictions = allowed for all authenticated users
+	if len(p.AllowedUsers) == 0 && len(p.AllowedGroups) == 0 {
+		return true
 	}
 
-	usernameHash, shouldRegenerate, err := verifySessionToken(token.Value, a.authSecretKey, time.Now())
-	if err != nil {
-		return false
+	for _, u := range p.AllowedUsers {
+		if u == user.Username {
+			return true
+		}
 	}
 
-	username, exists := a.usernameHashToUsername[string(usernameHash)]
-	if !exists {
-		return false
+	for _, g := range p.AllowedGroups {
+		for _, ug := range user.Groups {
+			if g == ug {
+				return true
+			}
+		}
 	}
 
-	_, exists = a.Config.Auth.Users[username]
-	if !exists {
-		return false
-	}
+	return false
+}
 
-	if shouldRegenerate {
-		newToken, err := generateSessionToken(username, a.authSecretKey, time.Now())
-		if err != nil {
-			log.Printf("Could not compute session token during regeneration: %v", err)
-			return false
+func (a *application) canUserAccessPage(user *authenticatedUser, p *page) bool {
+	pageHasRestrictions := len(p.AllowedUsers) > 0 || len(p.AllowedGroups) > 0
+
+	if !pageHasRestrictions {
+		if !a.RequiresAuth {
+			return true
 		}
 
-		a.setAuthSessionCookie(w, r, newToken, time.Now().Add(AUTH_TOKEN_VALID_PERIOD))
+		return user != nil
 	}
 
+	if user == nil {
+		return false
+	}
+
+	return a.isUserAllowedOnPage(user, p)
+}
+
+func (a *application) handleAccessControl(w http.ResponseWriter, r *http.Request, p *page, fallback doWhenUnauthorized) bool {
+	user := a.getAuthenticatedUser(w, r)
+
+	pageHasRestrictions := len(p.AllowedUsers) > 0 || len(p.AllowedGroups) > 0
+	allowed := a.canUserAccessPage(user, p)
+
+	if allowed {
+		return false
+	}
+
+	if user == nil {
+		switch fallback {
+		case redirectToLogin:
+			http.Redirect(w, r, a.Config.Server.BaseURL+"/login", http.StatusSeeOther)
+		case showUnauthorizedJSON:
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error": "Unauthorized"}`))
+		}
+		return true
+	}
+
+	if pageHasRestrictions {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte("Forbidden"))
+		return true
+	}
+
+	switch fallback {
+	case redirectToLogin:
+		http.Redirect(w, r, a.Config.Server.BaseURL+"/login", http.StatusSeeOther)
+	case showUnauthorizedJSON:
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(`{"error": "Unauthorized"}`))
+	}
 	return true
+
 }
 
 // Handles sending the appropriate response for an unauthorized request and returns true if the request was unauthorized
@@ -302,9 +404,30 @@ func (a *application) handleUnauthorizedResponse(w http.ResponseWriter, r *http.
 	return true
 }
 
+func (a *application) AnyAuthEnabled() bool {
+	return a.OIDCEnabled || a.PasswordEnabled
+}
+
 // Maybe this should be a POST request instead?
 func (a *application) handleLogoutRequest(w http.ResponseWriter, r *http.Request) {
 	a.setAuthSessionCookie(w, r, "", time.Now().Add(-1*time.Hour))
+
+	// Clear OIDC session if present
+	if a.OIDCEnabled && a.oidcSessions != nil {
+		sessionCookie, err := r.Cookie(OIDC_SESSION_COOKIE_NAME)
+		if err == nil && sessionCookie.Value != "" {
+			a.oidcSessions.delete(sessionCookie.Value)
+		}
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     OIDC_SESSION_COOKIE_NAME,
+		Value:    "",
+		Expires:  time.Now().Add(-1 * time.Hour),
+		Path:     a.Config.Server.BaseURL + "/",
+		HttpOnly: true,
+	})
+
 	http.Redirect(w, r, a.Config.Server.BaseURL+"/login", http.StatusSeeOther)
 }
 
@@ -313,29 +436,33 @@ func (a *application) setAuthSessionCookie(w http.ResponseWriter, r *http.Reques
 		Name:     AUTH_SESSION_COOKIE_NAME,
 		Value:    token,
 		Expires:  expires,
-		Secure:   strings.ToLower(r.Header.Get("X-Forwarded-Proto")) == "https",
+		Secure:   a.isRequestHTTPS(r),
 		Path:     a.Config.Server.BaseURL + "/",
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 		HttpOnly: true,
 	})
 }
 
 func (a *application) handleLoginPageRequest(w http.ResponseWriter, r *http.Request) {
-	if a.isAuthorized(w, r) {
+	if a.getAuthenticatedUser(w, r) != nil {
 		http.Redirect(w, r, a.Config.Server.BaseURL+"/", http.StatusSeeOther)
 		return
 	}
 
+	oidcError := r.URL.Query().Get("error")
+
 	data := &templateData{
-		App: a,
+		App:       a,
+		OIDCError: oidcError,
 	}
 	a.populateTemplateRequestData(&data.Request, r)
 
 	var responseBytes bytes.Buffer
 	err := loginPageTemplate.Execute(&responseBytes, data)
 	if err != nil {
+		log.Printf("rendering login page: %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(err.Error()))
+		w.Write([]byte("internal server error"))
 		return
 	}
 

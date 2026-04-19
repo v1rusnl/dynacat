@@ -150,6 +150,21 @@ icon: di:immich # di for Dashboard icons https://github.com/homarr-labs/dashboar
 icon: mdi:camera # mdi for Material Design icons https://pictogrammers.com/library/mdi/
 ```
 
+You can also add an icon next to a widget title using `title-icon`:
+
+```yaml
+- type: custom-api
+  title: Todoist
+  title-icon: di:todoist
+```
+
+If you self-host icons through your configured `assets-path`, both `icon` and `title-icon` support that as well:
+
+```yaml
+icon: /assets/icons/todoist.png
+title-icon: /assets/icons/todoist.png
+```
+
 > [!NOTE]
 >
 > The icons are loaded externally and are hosted on `cdn.jsdelivr.net`, if you do not wish to depend on a 3rd party you are free to download the icons individually and host them locally.
@@ -163,70 +178,13 @@ icon: auto-invert sh:dynacat-dark # with a selfh.st icon
 
 This expects the icon to be black and will automatically invert it to white when using a dark theme.
 
+The same icon syntax and prefixes also work for `title-icon`.
+
+If an icon URL cannot be loaded (for example, the file does not exist or the host is unreachable), Dynacat will hide the icon and render the widget as if no icon was configured.
+
 ## Config schema
 
 For property descriptions, validation and autocompletion of the config within your IDE, @not-first has kindly created a [schema](https://github.com/not-first/dynacat-schema). Massive thanks to them for this, go check it out and give them a star!
-
-## Authentication
-
-To make sure that only you and the people you want to share your dashboard with have access to it, you can set up authentication via username and password. This is done through a top level `auth` property. Example:
-
-```yaml
-auth:
-  secret-key: # this must be set to a random value generated using the secret:make CLI command
-  users:
-    admin:
-      password: 123456
-    svilen:
-      password: 123456
-```
-
-To generate a secret key, run the following command:
-
-```sh
-./dynacat secret:make
-```
-
-Or with Docker:
-
-```sh
-docker run --rm Panonim/dynacat secret:make
-```
-
-### Using hashed passwords
-
-If you do not want to store plain passwords in your config file or in environment variables, you can hash your password and provide its hash instead:
-
-```sh
-./dynacat password:hash mysecretpassword
-```
-
-Or with Docker:
-
-```sh
-docker run --rm Panonim/dynacat password:hash mysecretpassword
-```
-
-Then, in your config file use the `password-hash` property instead of `password`:
-
-```yaml
-auth:
-  secret-key: # this must be set to a random value generated using the secret:make CLI command
-  users:
-    admin:
-      password-hash: $2a$10$o6SXqiccI3DDP2dN4ADumuOeIHET6Q4bUMYZD6rT2Aqt6XQ3DyO.6
-```
-
-### Preventing brute-force attacks
-
-Dynacat will automatically block IP addresses of users who fail to authenticate 5 times in a row in the span of 5 minutes. In order for this feature to work correctly, Dynacat must know the real IP address of requests. If you're using a reverse proxy such as nginx, Traefik, NPM, etc, you must set the `proxied` property in the `server` configuration to `true`:
-
-```yaml
-server:
-  proxied: true
-```
-
-When set to `true`, Dynacat will use the `X-Forwarded-For` header to determine the original IP address of the request, so make sure that your reverse proxy is correctly configured to send that header.
 
 ## Server
 Server configuration is done through a top level `server` property. Example:
@@ -300,12 +258,12 @@ To be able to point to an asset from your assets path, use the `/assets/` path l
 
 ```yaml
 icon: /assets/gitea-icon.png
+```
 
 #### `cache-dir`
 Directory where Dynacat stores cached remote images (for example, widget icons). Cached files are served from `/.cache/` with long cache headers so browsers reuse them without refetching from the original host.
 
 If the path is relative, it will be resolved relative to the Dynacat working directory. The directory will be created if it does not exist.
-```
 
 #### `db-path`
 Path to the SQLite database file used for server-side todo storage. Only required when at least one `to-do` widget has `storage: server` set. If the path is relative, it will be resolved relative to the Dynacat working directory. The file will be created if it does not exist.
@@ -510,6 +468,7 @@ pages:
 | ---- | ---- | -------- | ------- |
 | name | string | yes | |
 | slug | string | no | |
+| dynamic-updates | boolean | no | true |
 | width | string | no | |
 | desktop-navigation-width | string | no | |
 | center-vertically | boolean | no | false |
@@ -524,6 +483,23 @@ The name of the page which gets shown in the navigation bar.
 
 #### `slug`
 The URL friendly version of the title which is used to access the page. For example if the title of the page is "RSS Feeds" you can make the page accessible via `localhost:8080/feeds` by setting the slug to `feeds`. If not defined, it will automatically be generated from the title.
+
+#### `dynamic-updates`
+Controls whether automatic dynamic updates are enabled for this page. Defaults to `true`.
+
+When set to `false`, the page will not perform automatic dynamic refreshes (SSE updates, page-level polling, and widget `update-interval` polling).
+
+Example:
+
+```yaml
+pages:
+  - name: "Home Page"
+    slug: home
+    dynamic-updates: false
+    columns:
+      - size: full
+        widgets: ...
+```
 
 #### `width`
 The maximum width of the page on desktop. Possible values are `default`, `slim` and `wide`.
@@ -787,6 +763,7 @@ Preview:
 | Name | Type | Required | Default |
 | ---- | ---- | -------- | ------- |
 | instance-url | string | no | `https://www.changedetection.io` |
+| allow-insecure | boolean | no | false |
 | token | string | no |  |
 | limit | integer | no | 10 |
 | collapse-after | integer | no | 5 |
@@ -794,6 +771,9 @@ Preview:
 
 ##### `instance-url`
 The URL pointing to your instance of `changedetection.io`.
+
+##### `allow-insecure`
+Whether to allow invalid/self-signed certificates when making requests to the service.
 
 ##### `token`
 The API access token which can be found in `SETTINGS > API`. Optionally, you can specify this using an environment variable with the syntax `${VARIABLE_NAME}`.
@@ -1148,6 +1128,83 @@ parameters:
     - item1
     - item2
 ```
+
+### Dynawidgets
+
+Display widgets from the [Dynawidgets community repository](https://github.com/Panonim/dynawidgets). These are pre-built templates that only require you to specify the widget slug and optional configuration.
+
+> [!NOTE]
+>
+> Dynawidgets widgets are built by the community and leverage the custom-api widget system under the hood. Templates are automatically downloaded and cached locally.
+
+Examples:
+
+<details>
+<summary>View <code>dynacat.yml</code></summary>
+<br>
+
+```yaml
+- type: dynawidgets
+  widget: daily-chess-puzzle
+```
+
+</details>
+<br>
+
+<details>
+<summary>View <code>dynacat.yml</code> with custom title and options</summary>
+<br>
+
+```yaml
+- type: dynawidgets
+  widget: daily-chess-puzzle
+  title: Chess Challenge
+  cache: 1d
+```
+
+</details>
+
+#### Properties
+| Name | Type | Required | Default |
+| ---- | ---- | -------- | ------- |
+| widget | string | yes | |
+| repo | string | no | main |
+| url | string | no | |
+| headers | key (string) & value (string) | no | |
+| method | string | no | GET |
+| body-type | string | no | json |
+| body | any | no | |
+| frameless | boolean | no | false |
+| allow-insecure | boolean | no | false |
+| skip-json-validation | boolean | no | false |
+| options | map | no | |
+| parameters | key (string) & value (string|array) | no | |
+| subrequests | map of requests | no | |
+
+##### `widget`
+The slug of the widget from the dynawidgets repository. This is the only required property. The widget template will be automatically fetched and cached to `/app/assets/dynawidgets/{widget}.txt`. Example:
+
+```yaml
+widget: daily-chess-puzzle
+```
+
+##### `repo`
+The branch/repository to fetch the widget from. This allows you to test widgets from different branches or forks. Defaults to `main`. Example:
+
+```yaml
+widget: daily-chess-puzzle
+repo: testing/main
+```
+
+This will fetch from `https://raw.githubusercontent.com/Panonim/dynawidgets/refs/heads/testing/main/...`
+
+##### `url`, `headers`, `method`, `body-type`, `body`, `frameless`, `allow-insecure`, `skip-json-validation`
+These properties work the same as in the [custom-api widget](#custom-api). They override the default values defined in the widget's template `required` section.
+
+##### `options`, `parameters`, `subrequests`
+These properties work the same as in the [custom-api widget](#custom-api) and allow you to customize the widget's behavior and appearance.
+
+Learn more about building and contributing widgets in the [Contributing to Dynawidgets](contributing.md) guide.
 
 ### DNS Stats
 Display statistics from a self-hosted ad-blocking DNS resolver such as AdGuard Home, Pi-hole, or Technitium.
@@ -2318,8 +2375,10 @@ Preview:
 | <kbd>S</kbd> | Focus the search bar | Not already focused on another input field |
 | <kbd>Enter</kbd> | Perform search in the same tab | Search input is focused and not empty |
 | <kbd>Ctrl</kbd> + <kbd>Enter</kbd> | Perform search in a new tab | Search input is focused and not empty |
-| <kbd>Escape</kbd> | Leave focus | Search input is focused |
-| <kbd>Up</kbd> | Insert the last search query since the page was opened into the input field | Search input is focused |
+| <kbd>Escape</kbd> | Leave focus / Close suggestions | Search input is focused |
+| <kbd>Up</kbd> / <kbd>Down</kbd> | Insert the last search query / Navigate suggestions | Search input is focused |
+| <kbd>↑</kbd> | Select previous suggestion | Autocomplete suggestions visible |
+| <kbd>↓</kbd> | Select next suggestion | Autocomplete suggestions visible |
 
 > [!TIP]
 >
@@ -2333,6 +2392,7 @@ Preview:
 | autofocus | boolean | no | false |
 | target | string | no | _blank |
 | placeholder | string | no | Type here to search… |
+| autocomplete | boolean | no | true |
 | bangs | array | no | |
 
 ##### `search-engine`
@@ -2359,6 +2419,9 @@ The target to use when opening the search results in a new tab. Possible values 
 ##### `placeholder`
 When set, modifies the text displayed in the input field before typing.
 
+##### `autocomplete`
+When set to `true` (default), displays search suggestions as you type. Navigate suggestions with <kbd>↑</kbd> and <kbd>↓</kbd> arrow keys, select with <kbd>Enter</kbd>, or dismiss with <kbd>Escape</kbd>. Set to `false` to disable autocompletion.
+
 ##### `bangs`
 What now? [Bangs](https://duckduckgo.com/bangs). They're shortcuts that allow you to use the same search box for many different sites. Assuming you have it configured, if for example you start your search input with `!yt` you'd be able to perform a search on YouTube:
 
@@ -2370,6 +2433,7 @@ What now? [Bangs](https://duckduckgo.com/bangs). They're shortcuts that allow yo
 | title | string | no |
 | shortcut | string | yes |
 | url | string | yes |
+| icon | string | no |
 
 ###### `title`
 Optional title that will appear on the right side of the search bar when the query starts with the associated shortcut.
@@ -2393,6 +2457,19 @@ url: https://store.steampowered.com/search/?term={QUERY}
 url: https://www.amazon.com/s?k={QUERY}
 ```
 
+###### `icon`
+An optional icon to display in place of the default search icon when the bang is active. Supports the same icon syntax as other widgets:
+
+```yaml
+bangs:
+  - title: YouTube
+    shortcut: "!yt"
+    url: https://www.youtube.com/results?search_query={QUERY}
+    icon: di:youtube
+```
+
+See the [Icons](#icons) section for full syntax reference including `si:`, `di:`, `sh:`, `mdi:` prefixes, URLs, and `auto-invert`.
+
 ### Server Stats
 Display statistics such as CPU usage, memory usage and disk usage of the server Dynacat is running on or other servers.
 
@@ -2413,7 +2490,7 @@ Preview:
 >
 > This widget is currently under development, some features might not function as expected or may change.
 
-To display data from a remote server you need to have the Dynacat Agent running on that server. You can download the agent from [here](https://github.com/dynacat/agent), though keep in mind that it is still in development and may not work as expected. Support for other providers such as Dynacats will be added in the future.
+To display data from a remote server you need to have the Dynacat Agent running on that server. You can download the agent from [here](https://github.com/glanceapp/agent), though keep in mind that it is still in development and may not work as expected. Support for other providers such as Dynacats will be added in the future.
 
 In the event that the CPU temperature goes over 80°C, a flame icon will appear next to the CPU. The progress indicators will also turn red (or the equivalent of your negative color) to hopefully grab your attention if anything is unusually high:
 
@@ -2654,6 +2731,20 @@ pages:
 
 Just like the `group` widget, you can insert any widget type, you can even insert a `group` widget inside of a `split-column` widget, but you can't insert a `split-column` widget inside of a `group` widget.
 
+
+### Stopwatch
+
+A browser-based stopwatch widget. 
+
+Example:
+
+```yaml
+- type: stopwatch
+```
+
+Preview:
+
+![](images/stopwatch-widget-preview.png)
 
 ### Todo
 
@@ -2949,7 +3040,7 @@ Greenville, United States
 # External Integrations
 ### Currently Playing
 
-Display currently active media sessions from media servers (Plex, Jellyfin, Emby).
+Display currently active media sessions from media servers (Plex, Jellyfin, Emby, Navidrome).
 
 Example:
 
@@ -2961,6 +3052,9 @@ Example:
     - url: jellyfin:https://jellyfin.example.com
       token: ${JELLYFIN_API_KEY}
       allow-insecure: true
+    - url: navidrome:https://music.example.com
+      username: ${NAVIDROME_USER}
+      token: ${NAVIDROME_PASSWORD}
   show-thumbnail: true
   show-progress-bar: true
   group-by-host: false
@@ -2983,17 +3077,19 @@ Example:
 
 An array of media server hosts to check for active sessions.
 
-**Important**: Each host URL must be prefixed with the server type (`plex:`, `jellyfin:`, or `emby:`). For example:
+**Important**: Each host URL must be prefixed with the server type (`plex:`, `jellyfin:`, `emby:`, or `navidrome:`). For example:
 - `plex:https://192.168.1.10:32400`
 - `jellyfin:http://jellyfin.local:8096`
 - `emby:https://emby.example.com`
+- `navidrome:https://music.example.com`
 
 Properties for each host:
 
 | Name | Type | Required | Notes |
 | ---- | ---- | -------- | ----- |
 | url | string | yes | Must include server type prefix |
-| token | string | yes | API key or token for authentication |
+| username | string | for Navidrome | Subsonic username (Navidrome only) |
+| token | string | yes | API key/token, or password for Navidrome Subsonic auth |
 
 Example:
 ```yaml
@@ -3004,6 +3100,9 @@ hosts:
     token: ${JELLYFIN_API_KEY}
   - url: emby:https://emby.example.com
     token: ${EMBY_API_KEY}
+  - url: navidrome:https://music.example.com
+    username: ${NAVIDROME_USER}
+    token: ${NAVIDROME_PASSWORD}
 ```
 
 ##### `play-state`
@@ -3051,6 +3150,10 @@ When `true`, groups sessions by their media server. When `false`, displays all s
 
 **Emby:**
 - Requires an API key. Generate one in: ⚙️ (settings icon) → Advanced → API Keys
+
+**Navidrome:**
+- Uses the Subsonic/OpenSubsonic API (`getNowPlaying`).
+- Set `username` to your Navidrome username and `token` to your Navidrome password.
 
 ### Latest Media
 

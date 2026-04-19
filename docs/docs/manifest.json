@@ -4,9 +4,11 @@
     { "id": "comparison", "title": "Comparison", "file": "docs/comparison.md" },
     { "id": "search", "title": "Search", "file": "docs/search.md" },
     { "section": "reference" },
+    { "id": "authentication", "title": "Authentication", "file": "docs/authentication.md" },
     { "id": "configuration", "title": "Configuration", "file": "docs/configuration.md" },
+    { "id": "changelog", "title": "Changelog", "file": "docs/changelog.md" },
     { "id": "custom-api", "title": "Custom API", "file": "docs/custom-api.md" },
-    { "id": "default-rates", "title": "Default Update Rates", "file": "docs/default_rates.md" },
+    { "id": "dynamic-updates", "title": "Dynamic Updates", "file": "docs/dynamic-updates.md" },
     { "id": "docker-options", "title": "Docker Options", "file": "docs/docker-options.md" },
     { "id": "extensions", "title": "Extensions", "file": "docs/extensions.md" },
     { "id": "faq", "title": "Faq", "file": "docs/faq.md" },
@@ -14,7 +16,6 @@
     { "id": "preconfigured-pages", "title": "Preconfigured Pages", "file": "docs/preconfigured-pages.md" },
     { "id": "themes", "title": "Themes", "file": "docs/themes.md" },
     { "section": "dynawidgets" },
-    { "id": "available-widgets", "title": "Available Widgets", "file": "docs/available-widgets.md" },
     { "id": "contributing", "title": "Contributing", "file": "docs/contributing.md" }
   ]
 }

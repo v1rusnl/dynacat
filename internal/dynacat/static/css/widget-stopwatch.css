@@ -1,0 +1,81 @@
+.stopwatch {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.2rem;
+    width: 100%;
+    min-height: 100%;
+}
+
+.stopwatch-display {
+    font-size: 2.4rem;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    line-height: 1;
+}
+
+.stopwatch-controls {
+    display: flex;
+    gap: 0.8rem;
+}
+
+.stopwatch-btn-hidden {
+    display: none;
+}
+
+.stopwatch-btn {
+    background: var(--color-widget-background-highlight);
+    border: none;
+    border-radius: var(--border-radius);
+    color: var(--color-text-base);
+    cursor: pointer;
+    width: 4.5rem;
+    height: 3.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s, background-color 0.2s;
+}
+
+.stopwatch-btn:hover {
+    color: var(--color-text-highlight);
+    background-color: var(--color-progress-border);
+}
+
+.stopwatch-btn svg {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.stopwatch-laps {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    max-height: 20rem;
+    overflow-y: auto;
+}
+
+.stopwatch-lap {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    font-size: var(--font-size-h5);
+    color: var(--color-text-base);
+}
+
+.stopwatch-lap svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    color: var(--color-text-subdue);
+}
+
+.stopwatch-lap-time {
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-highlight);
+}

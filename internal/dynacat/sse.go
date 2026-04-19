@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"net/url"
 	"sync"
 	"time"
 )
@@ -13,6 +15,7 @@ import (
 type sseClient struct {
 	ch   chan string
 	done <-chan struct{}
+	user *authenticatedUser
 }
 
 func (a *application) registerImageProxy(hash string, url string, allowInsecure bool) {
@@ -26,6 +29,45 @@ func (a *application) getImageProxyInfo(hash string) (imageProxyInfo, bool) {
 	defer a.imageProxyMu.RUnlock()
 	info, ok := a.imageProxyURLs[hash]
 	return info, ok
+}
+
+func validateImageProxyURL(rawURL string) error {
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("scheme %q not allowed", parsed.Scheme)
+	}
+	host := parsed.Hostname()
+	if host == "" {
+		return fmt.Errorf("missing host")
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return fmt.Errorf("resolving host: %w", err)
+	}
+	for _, ip := range ips {
+		if isDisallowedIP(ip) {
+			return fmt.Errorf("host resolves to disallowed address %s", ip)
+		}
+	}
+	return nil
+}
+
+func isDisallowedIP(ip net.IP) bool {
+	if ip == nil {
+		return true
+	}
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
+		ip.IsMulticast() || ip.IsUnspecified() || ip.IsPrivate() {
+		return true
+	}
+	// Cloud metadata endpoints (169.254.x covered by link-local; include IMDSv2 fd00:ec2::254)
+	if ip.Equal(net.ParseIP("fd00:ec2::254")) {
+		return true
+	}
+	return false
 }
 
 func (a *application) handleImageProxyRequest(w http.ResponseWriter, r *http.Request) {
@@ -42,6 +84,11 @@ func (a *application) handleImageProxyRequest(w http.ResponseWriter, r *http.Req
 	info, exists := a.getImageProxyInfo(hash)
 	if !exists {
 		http.NotFound(w, r)
+		return
+	}
+
+	if err := validateImageProxyURL(info.URL); err != nil {
+		http.Error(w, "Forbidden URL", http.StatusForbidden)
 		return
 	}
 
@@ -80,10 +127,44 @@ func (a *application) handleImageProxyRequest(w http.ResponseWriter, r *http.Req
 	}
 }
 
+func (a *application) handleSearchAutocompleteRequest(w http.ResponseWriter, r *http.Request) {
+	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
+		return
+	}
+
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+		return
+	}
+
+	ddgURL := "https://duckduckgo.com/ac/?" + url.Values{"q": {query}}.Encode()
+	req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, ddgURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create request", http.StatusInternalServerError)
+		return
+	}
+	setBrowserUserAgentHeader(req)
+
+	resp, err := defaultHTTPClient.Do(req)
+	if err != nil {
+		http.Error(w, "Failed to fetch suggestions", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, resp.Body)
+}
+
 func (a *application) handleSSEUpdates(w http.ResponseWriter, r *http.Request) {
 	if a.handleUnauthorizedResponse(w, r, showUnauthorizedJSON) {
 		return
 	}
+
+	user := a.getAuthenticatedUser(w, r)
 
 	if !a.DynamicUpdateEnabled {
 		w.WriteHeader(http.StatusNoContent)
@@ -107,15 +188,23 @@ func (a *application) handleSSEUpdates(w http.ResponseWriter, r *http.Request) {
 	client := &sseClient{
 		ch:   make(chan string, 16),
 		done: r.Context().Done(),
+		user: user,
 	}
 	a.sseRegisterClient(client)
 	defer a.sseUnregisterClient(client)
+
+	authRecheck := time.NewTicker(60 * time.Second)
+	defer authRecheck.Stop()
 
 	for {
 		select {
 		case msg := <-client.ch:
 			fmt.Fprintf(w, "event: widget-update\ndata: %s\n\n", msg)
 			flusher.Flush()
+		case <-authRecheck.C:
+			if a.RequiresAuth && a.getAuthenticatedUser(w, r) == nil {
+				return
+			}
 		case <-r.Context().Done():
 			return
 		}
@@ -140,6 +229,22 @@ func (a *application) sseUpdateLoop(ctx context.Context) {
 	}
 }
 
+func (a *application) sseBroadcastWidgetUpdate(pg *page, msg string) {
+	a.sseMu.RLock()
+	defer a.sseMu.RUnlock()
+
+	for c := range a.sseClients {
+		if !a.canUserAccessPage(c.user, pg) {
+			continue
+		}
+
+		select {
+		case c.ch <- msg:
+		default:
+		}
+	}
+}
+
 func (a *application) sseCheckAndPushUpdates(ctx context.Context) {
 	a.sseMu.RLock()
 	clientCount := len(a.sseClients)
@@ -158,6 +263,10 @@ func (a *application) sseCheckAndPushUpdates(ctx context.Context) {
 
 		pg, exists := a.widgetToPage[widgetID]
 		if !exists {
+			continue
+		}
+
+		if !pg.DynamicUpdatesEnabled() {
 			continue
 		}
 
@@ -185,7 +294,7 @@ func (a *application) sseCheckAndPushUpdates(ctx context.Context) {
 				return
 			}
 
-			a.sseBroadcast(string(msg))
+			a.sseBroadcastWidgetUpdate(pg, string(msg))
 		}(w, pg)
 	}
 	wg.Wait()

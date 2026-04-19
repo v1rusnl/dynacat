@@ -69,12 +69,12 @@ func (widget *dockerContainersWidget) Render() template.HTML {
 }
 
 func (widget *dockerContainersWidget) cacheContainerIcons(containers dockerContainerList) {
-	if widget.Providers == nil || widget.Providers.imageCache == nil {
+	if widget.Providers == nil {
 		return
 	}
 
 	for i := range containers {
-		containers[i].Icon.cacheURL(widget.Providers.imageCache)
+		containers[i].Icon.prepare(widget.Providers)
 	}
 }
 
