@@ -1,0 +1,15 @@
+# Changes for 2.2.0
+- OICD Support
+- Dynamic Updates Documentation
+- Add Navidrome to the "playing" widget
+- Fix State loss after videos widget refresh
+- Added `dynawidgets` 
+- Stopwatch widget
+- Security Updates
+- Allow insecure for `changedetection` widget 
+- Added icon support for titles
+- Added icon support for bangs in search widget
+- Added search completion using ddg api
+- Allowed to press `enter` to login 
+- Add cursor pointer to youtube thumbnails
+- Added `{{hide}}` function to cutom-api widget
